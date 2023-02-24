@@ -28,7 +28,7 @@ bot = Bot(token=cfg.telegramAPI_TOKEN, parse_mode="HTML")
 
 ##########################################################################
 #Считываем данные с Excel файле в словарь df
-df = pd.read_excel('DataBase/Sheets/DataFrame.xlsx',usecols=[1,2,3,4]).to_dict('list')
+df = pd.read_excel('DataBase/Sheets/DataFrame.xlsx',usecols=[1,2,3]).to_dict('list')
 userdata = pd.read_excel('DataBase/Sheets/UserData.xlsx',usecols=[1,2,3,4,5,6,7]).to_dict('list')
 Citis = pd.read_excel('DataBase/Sheets/Сitis.xlsx',usecols=[1,2]).to_dict('list')
 prod = pd.read_excel('DataBase/Sheets/Products.xlsx',usecols=[1,2,3,4,5,6,7,8,9,10,11]).to_dict('list')
@@ -55,6 +55,9 @@ class Form(StatesGroup):
     add_Description = State() #Ввод описания товара
     add_photos = State() #Запрос фотографий товара
     ##########################################################################
+
+    # Поиск по ключевым словам
+    ##########################################################################
     vote_search = State() #Выбор типа поиска
     search_of_category = State()
     add_prodType = State()
@@ -65,13 +68,22 @@ class Form(StatesGroup):
     search_of_KeyWords = State() #Ввод ключемвых слов для поиска
     vote_search_type = State()
     viewing_output = State() #Просмотр выдачи
-    #Поиск по ключевым словам
     ##########################################################################
+
+    #Оплата
+    ##########################################################################
+    pay_amount = State()
+    pay_ok = State()
+    ##########################################################################
+    #Продвижениие
+    vote_up = State()
 #Словари глабальных переменных
 gl = {}
 moder = {}
 search_indexes = {}
 search = {}
+label = {}
+up_index = {}
 #Функции обработчики
 ##########################################################################
 #Функция возвращает все вхождения элемента в списке
@@ -162,6 +174,36 @@ def nonMdeiaGroup(userID, gl):
     pd.DataFrame(prod).to_excel('DataBase/Sheets/Products.xlsx')
 ##########################################################################
 
+#Функции платежей
+##########################################################################
+def check_pay(username,label):
+    history = client.operation_history(label=label)
+
+    for operation in history.operations:
+        if operation.status == 'success':
+            return True
+        else:
+            return False
+    else:
+        return False
+#Функия создания url для оплаты по сумме, тегу, username и типу товара
+def create_pay_url(sum,username):
+    quickpay = Quickpay(
+        receiver=cfg.yoomoneyWallet,
+        quickpay_form="shop",
+        targets="Payment for services",
+        paymentType="SB",
+        sum=sum,
+        label=str(sorted(df['PayID'])[len(df['PayID'])-1]+1)
+    )
+    label[str(username)] = sorted(df['PayID'])[len(df['PayID']) - 1] + 1
+    df['UserName'].append(username)
+    df['PayID'].append(int(sorted(df['PayID'])[len(df['PayID'])-1]+1))
+    df['PayAmunt'].append(sum)
+    pd.DataFrame(df).to_excel('DataBase/Sheets/DataFrame.xlsx',sheet_name='Payments')
+    return quickpay.redirected_url
+##########################################################################
+
 #Форма регистрации
 ##########################################################################
 @form_router.message(Command("start"))
@@ -171,7 +213,8 @@ async def command_start(message: types.message, state: FSMContext) -> None:
             await message.answer('Вот список доступных команд:\n' #выводим список команд
                                  '/profile - Посмотреть свой профиль\n'
                                  '/add - Выстовить товар на продажу\n'
-                                 '/search - Поиск товаров')
+                                 '/search - Поиск товаров\n'
+                                 '/pay - Задонатить на баланс бота')
         else:
             await message.answer('Для начала работы мне потребуются некоторые твои данные.', #Запрашиваем данные у пользователя
                 reply_markup=types.ReplyKeyboardRemove())
@@ -195,7 +238,7 @@ async def City(message: Message, state: FSMContext) -> None:
             userdata['UserID'].append(message.chat.id)
             userdata['Товары на продаже'].append(0)
             userdata['кол-во продаых товаров'].append(0)
-            userdata['Рейтинг'].append(0.0)
+            userdata['Рейтинг'].append(5.0)
             userdata['Balance'].append(0.0)
             await state.set_state(Form.Yes_or_No)
             pd.DataFrame(userdata).to_excel('DataBase/Sheets/UserData.xlsx',sheet_name='Users')
@@ -214,7 +257,8 @@ async def Yes_or_No(message: Message, state: FSMContext) -> None:
                 'Вот список доступных команд:\n'
                 '/profile - Посмотреть свой профиль\n'
                 '/add - Выстовить товар на продажу\n'
-                '/search - Поиск товаров',
+                '/search - Поиск товаров\n'
+                '/pay - Задонатить на баланс бота',
                 reply_markup=types.ReplyKeyboardRemove()
             )
         elif message.text == 'Нет': #Удаляем Упоменание о пользователя в базе данных и просим пройти процедуру заного
@@ -268,7 +312,7 @@ async def vote_my_product(message: Message, state: FSMContext) -> None:
                     callback_data="del"+str(index[int(message.text)-1])),
                 types.InlineKeyboardButton(
                     text="Продвинуть",
-                    callback_data="up"+str(index[int(message.text)-1])),
+                    callback_data="up"+str(index[int(message.text)-1])+'|'+str(message.from_user.id)),
             )
             await state.clear()
             media = []
@@ -291,7 +335,7 @@ async def vote_my_product(message: Message, state: FSMContext) -> None:
                 callback_data="del" + str(index[int(message.text) - 1])),
                 types.InlineKeyboardButton(
                     text="Продвинуть",
-                    callback_data="up" + str(index[int(message.text) - 1])),
+                    callback_data="up" + str(index[int(message.text) - 1])+'|'+str(message.from_user.id)),
             )
             await state.clear()
             await message.answer('Название: ' + str(prod['ProductsName'][index[int(message.text)-1]])
@@ -759,6 +803,83 @@ async def viewing_output(message: Message,state: FSMContext) -> None:
         await message.answer('Поиск отменен',reply_markup=types.ReplyKeyboardRemove())
 ##########################################################################
 
+#Пополнение баланса
+##########################################################################
+@form_router.message(Command("pay"))
+async def command_pay(message: Message,state: FSMContext) -> None:
+    if message.chat.type == 'private':
+        await state.set_state(Form.pay_amount)
+        await message.answer('Введите сумму для пополнения')
+@form_router.message(Form.pay_amount)
+async def pay_amount(message: Message,state: FSMContext) -> None:
+    if int(message.text) > 1:
+        pay_url = create_pay_url(int(message.text),message.from_user.id)
+        builder = InlineKeyboardBuilder()
+        builder.add(types.InlineKeyboardButton(
+                text="Оплатить",
+                url = str(pay_url)),
+        )
+        builder.row(types.InlineKeyboardButton(
+                    text="Проверить оплату",
+                    callback_data=str(label[str(message.from_user.id)])+'|'+str(message.from_user.id)+'|'+str(message.text)))
+        await message.answer('Заявка на оплату №' + str(label[str(message.from_user.id)])+'создана',reply_markup=builder.as_markup())
+    else:
+        await message.answer('Введено неверное значение. Попробуйте еще раз',reply_markup=types.ReplyKeyboardRemove())
+##########################################################################
+
+#Продвижение
+##########################################################################
+@form_router.message(Form.vote_up)
+async def vote_up(message: Message,state: FSMContext) -> None:
+    if message.text == '1':
+        builder = InlineKeyboardBuilder()
+        builder.add(types.InlineKeyboardButton(
+            text="Написать продавцу",
+            url='tg://openmessage?user_id=' + str(message.from_user.id),
+        ))
+        if userdata['Balance'][userdata['UserID'].index(int(message.from_user.id))] - 200 > 0:
+            userdata['Balance'][userdata['UserID'].index(int(message.from_user.id))] -= 200
+            pd.DataFrame(userdata).to_excel('DataBase/Sheets/UserData.xlsx', sheet_name='Users')
+            index = up_index[str(message.from_user.id)]
+            for i in range(len(userdata['UserID'])):
+                if prod['City'][i] == userdata['City'][userdata['UserID'].index(int(message.from_user.id))]:
+                    if prod['PhotoID'][i] != 'non':
+                        groupID = userdata['UserID'][i]
+                        media = []
+                        indexph = get_indexes(list(prod['PhotoID'][index]), '|')
+                        for i in range(len(indexph) - 1):
+                            if i == 0:
+                                media.append(types.InputMediaPhoto(
+                                    media=prod['PhotoID'][index][indexph[i] + 1:indexph[i + 1]],
+                                    caption='Название: ' + str(prod['ProductsName'][index])
+                                            + '\nЦена: ' + str(prod['Amount'][index]) + '₽'
+                                            + '\n=========================\nОписание:\n' + str(
+                                        prod['ProductsDescription'][index])
+                                            + '\n=========================\nКомпания производитель:' + str(
+                                        prod['Company'][index])
+                                            + '\nНазвание продукта:' + str(prod['CompanyName'][index])
+                                            + '\nРаздел: ' + str(prod['ProdType'][index])))
+                            else:
+                                media.append(types.InputMediaPhoto(
+                                    media=prod['PhotoID'][index][indexph[i] + 1:indexph[i + 1]]))
+                        await SendMediaGroup(chat_id=groupID, media=media)
+                        await bot.send_message(groupID, '⬇️Действия с товаром⬇️', reply_markup=builder.as_markup())
+                        await state.clear()
+                    else:
+                        groupID = userdata['UserID'][i]
+                        await bot.send_message(groupID, 'Название: ' + str(prod['ProductsName'][index])
+                                               + '\nЦена: ' + str(prod['Amount'][index]) + '₽'
+                                               + '\n=========================\nОписание:\n' + str(
+                            prod['ProductsDescription'][index])
+                                               + '\n=========================\nКомпания производитель:' + str(
+                            prod['Company'][index])
+                                               + '\nНазвание продукта:' + str(prod['CompanyName'][index])
+                                               + '\nРаздел: ' + str(prod['ProdType'][index]))
+                        await bot.send_message(groupID,'⬇️Действия с товаром⬇️',reply_markup=builder.as_markup())
+                        await state.clear()
+            await message.answer('Услуга оказана')
+##########################################################################
+
 #Обработка колбеков
 ##########################################################################
 @form_router.callback_query(Form.add_photos) #Колбеки фотграфий
@@ -844,6 +965,16 @@ async def callback_query_handler(callback_query: types.CallbackQuery,state: FSMC
                                 +'\nРаздел: '+str(prod['ProdType'][index]))
         await bot.send_message(groupID, '⬇️Действия с товаром⬇️', reply_markup=builder.as_markup())
         await state.clear()
+@form_router.callback_query(Form.pay_amount) #Колбеки фотграфий
+async def callback_query_handler(callback_query: types.CallbackQuery,state: FSMContext) -> any:
+    index = get_indexes(list(callback_query.data),'|')
+    if check_pay(callback_query.data[index[0]+1:index[1]],callback_query.data[0:index[0]]):
+        userdata['Balance'][userdata['UserID'].index(int(callback_query.data[index[0]+1:index[1]]))] += int(callback_query.data[index[1]+1::])
+        pd.DataFrame(userdata).to_excel('DataBase/Sheets/UserData.xlsx', sheet_name='Users')
+        await bot.delete_message(callback_query.message.chat.id,callback_query.message.message_id)
+        await callback_query.answer('Оплата прошла деньги зачислены на баланс')
+    else:
+        await callback_query.answer('Ошибка')
 @form_router.callback_query() #все колбеки
 async def callback_query_handler(callback_query: types.CallbackQuery,state: FSMContext) -> any:
     if callback_query.data[0:3] == 'del' and callback_query.data[0:6] != 'deladm':
@@ -884,8 +1015,11 @@ async def callback_query_handler(callback_query: types.CallbackQuery,state: FSMC
         except:
             await bot.send_message(callback_query.message.chat.id, 'Товара нет в базе данных')
             await bot.delete_message(callback_query.message.chat.id, callback_query.message.message_id)
-    if callback_query.data[0:3] == 'up' and callback_query.data[0:6] != 'upadm':
-        return 0
+    if callback_query.data[0:2] == 'up' and callback_query.data[0:5] != 'upadm':
+        await bot.delete_message(callback_query.message.chat.id, callback_query.message.message_id)
+        up_index[str(callback_query.data[callback_query.data.index('|')+1::])] = int(callback_query.data[2:callback_query.data.index('|')])
+        await bot.send_message(callback_query.message.chat.id,'Выберите тип провижения:\n#1 200₽ - Рассылка всем пользователям бота вашего города\n#2 20₽ - Поднятие в ленте')
+        await state.set_state(Form.vote_up)
     elif callback_query.data[0:5] == 'upadm':
         try:
             print(int(callback_query.data[5::]))
@@ -894,7 +1028,7 @@ async def callback_query_handler(callback_query: types.CallbackQuery,state: FSMC
             await bot.send_message(callback_query.message.chat.id, 'Товар выставлен на продажу.')
             await bot.send_message(int(moder[callback_query.data[5::]]),'Товар под названием "'
                                    +str(prod['ProductsName'][int(callback_query.data[5::])])
-                                   +'"прошел модерацию')
+                                   +'" прошел модерацию')
             moder.pop(callback_query.data[5::])
             await bot.delete_message(callback_query.message.chat.id, callback_query.message.message_id)
             pd.DataFrame(prod).to_excel('DataBase/Sheets/Products.xlsx')
