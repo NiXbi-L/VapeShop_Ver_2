@@ -77,6 +77,8 @@ class Form(StatesGroup):
     ##########################################################################
     #Продвижениие
     vote_up = State()
+    #Баг репорт
+    bug_report = State()
 #Словари глабальных переменных
 gl = {}
 moder = {}
@@ -279,6 +281,11 @@ async def Yes_or_No(message: Message, state: FSMContext) -> None:
 @form_router.message(Command("profile"))
 async def command_profile(message: Message) -> None:
     if message.chat.type == 'private':
+        builder = InlineKeyboardBuilder()
+        builder.add(types.InlineKeyboardButton(
+            text="Обновить",
+            callback_data="Обновить"+str(message.chat.id))
+        )
         await message.answer(message.from_user.first_name+'\n=========================\nБаланс: ' #Выводим данные профиля
                              +str(userdata['Balance'][userdata['UserID'].index(message.chat.id)])
                              +'₽\nРейтинг: ' + str(userdata['Рейтинг'][userdata['UserID'].index(message.chat.id)])
@@ -286,7 +293,7 @@ async def command_profile(message: Message) -> None:
                                 +str(userdata['кол-во продаых товаров'][userdata['UserID'].index(message.chat.id)])
                              +'\nКол-во товаров на продаже: ' + str(len(get_indexes(prod['UserID'],message.chat.id)))
                              +'\n=========================\nТовары на продаже:\n'+search_your_products(message.chat.id)
-                             +'\n=========================\nЧтобы открыть страницу товара введите\n/order')
+                             +'\n=========================\nЧтобы открыть страницу товара введите\n/order',reply_markup=builder.as_markup())
 ##########################################################################
 
 #Вызов страницы товара
@@ -837,13 +844,14 @@ async def vote_up(message: Message,state: FSMContext) -> None:
             text="Написать продавцу",
             url='tg://openmessage?user_id=' + str(message.from_user.id),
         ))
-        if userdata['Balance'][userdata['UserID'].index(int(message.from_user.id))] - 200 > 0:
+        if userdata['Balance'][userdata['UserID'].index(int(message.from_user.id))] - 200 >= 0:
             userdata['Balance'][userdata['UserID'].index(int(message.from_user.id))] -= 200
             pd.DataFrame(userdata).to_excel('DataBase/Sheets/UserData.xlsx', sheet_name='Users')
             index = up_index[str(message.from_user.id)]
+            x = 0
             for i in range(len(userdata['UserID'])):
-                if prod['City'][i] == userdata['City'][userdata['UserID'].index(int(message.from_user.id))]:
-                    if prod['PhotoID'][i] != 'non':
+                if userdata['City'][i] == userdata['City'][userdata['UserID'].index(int(message.from_user.id))]:
+                    if prod['PhotoID'][index] != 'non':
                         groupID = userdata['UserID'][i]
                         media = []
                         indexph = get_indexes(list(prod['PhotoID'][index]), '|')
@@ -855,10 +863,7 @@ async def vote_up(message: Message,state: FSMContext) -> None:
                                             + '\nЦена: ' + str(prod['Amount'][index]) + '₽'
                                             + '\n=========================\nОписание:\n' + str(
                                         prod['ProductsDescription'][index])
-                                            + '\n=========================\nКомпания производитель:' + str(
-                                        prod['Company'][index])
-                                            + '\nНазвание продукта:' + str(prod['CompanyName'][index])
-                                            + '\nРаздел: ' + str(prod['ProdType'][index])))
+                                            + '\n========================='))
                             else:
                                 media.append(types.InputMediaPhoto(
                                     media=prod['PhotoID'][index][indexph[i] + 1:indexph[i + 1]]))
@@ -871,13 +876,40 @@ async def vote_up(message: Message,state: FSMContext) -> None:
                                                + '\nЦена: ' + str(prod['Amount'][index]) + '₽'
                                                + '\n=========================\nОписание:\n' + str(
                             prod['ProductsDescription'][index])
-                                               + '\n=========================\nКомпания производитель:' + str(
-                            prod['Company'][index])
-                                               + '\nНазвание продукта:' + str(prod['CompanyName'][index])
-                                               + '\nРаздел: ' + str(prod['ProdType'][index]))
+                                               + '\n=========================')
                         await bot.send_message(groupID,'⬇️Действия с товаром⬇️',reply_markup=builder.as_markup())
                         await state.clear()
-            await message.answer('Услуга оказана')
+                x+=1
+
+            await message.answer('Услуга оказана. Кол-во человек которое увидело ваше объявление: ' + str(x-1))
+        else:
+            await message.answer('На вашем счете не достаточно средств')
+            await state.clear()
+    elif message.text == '2':
+        index = up_index[str(message.from_user.id)]
+
+##########################################################################
+
+#Обработка репортов
+##########################################################################
+@form_router.message(Command("report"))
+async def command_pay(message: Message,state: FSMContext) -> None:
+    await state.set_state(Form.bug_report)
+    await message.answer('Введите ваше обращение')
+@form_router.message(Form.bug_report)
+async def vote_up(message: Message,state: FSMContext) -> None:
+    groupID = -1001667843376
+    builder = InlineKeyboardBuilder()
+    builder.add(types.InlineKeyboardButton(
+        text=str(message.from_user.first_name),
+        url='tg://openmessage?user_id=' + str(message.from_user.id),
+    ))
+    await bot.send_message(groupID,'Обращение от '
+                           +message.from_user.first_name
+                           +'\n=========================\n'+message.text+'\n========================='
+                           ,reply_markup=builder.as_markup())
+    await state.clear()
+    await message.answer('Ваше обращение отправлено')
 ##########################################################################
 
 #Обработка колбеков
@@ -898,9 +930,7 @@ async def callback_query_handler(callback_query: types.CallbackQuery,state: FSMC
             #отправка товара на модерацию
             groupID = -1001667843376
             index = get_indexes(prod['UserID'], int(callback_query.data))
-            print(index)
             index = sorted(index)[len(index)-1]
-            print(index)
             builder = InlineKeyboardBuilder()
             builder.add(types.InlineKeyboardButton(
                     text="Удалить",
@@ -946,7 +976,6 @@ async def callback_query_handler(callback_query: types.CallbackQuery,state: FSMC
         # отправка товара на модерацию
         groupID = -1001667843376
         index = get_indexes(prod['UserID'], int(callback_query.data[3::]))
-        print(index)
         index = sorted(index)[len(index)-1]
         builder = InlineKeyboardBuilder()
         builder.add(types.InlineKeyboardButton(
@@ -998,6 +1027,9 @@ async def callback_query_handler(callback_query: types.CallbackQuery,state: FSMC
             await bot.delete_message(callback_query.message.chat.id, callback_query.message.message_id)
     elif callback_query.data[0:6] == 'deladm':
         try:
+            await bot.send_message(int(moder[callback_query.data[6::]]), 'Товар под названием "'
+                                   + str(prod['ProductsName'][int(callback_query.data[6::])])
+                                   + '" не прошел модерацию и был удален')
             prod['ProdID'].pop(int(callback_query.data[6::]))
             prod['Company'].pop(int(callback_query.data[6::]))
             prod['CompanyName'].pop(int(callback_query.data[6::]))
@@ -1016,13 +1048,15 @@ async def callback_query_handler(callback_query: types.CallbackQuery,state: FSMC
             await bot.send_message(callback_query.message.chat.id, 'Товара нет в базе данных')
             await bot.delete_message(callback_query.message.chat.id, callback_query.message.message_id)
     if callback_query.data[0:2] == 'up' and callback_query.data[0:5] != 'upadm':
-        await bot.delete_message(callback_query.message.chat.id, callback_query.message.message_id)
-        up_index[str(callback_query.data[callback_query.data.index('|')+1::])] = int(callback_query.data[2:callback_query.data.index('|')])
-        await bot.send_message(callback_query.message.chat.id,'Выберите тип провижения:\n#1 200₽ - Рассылка всем пользователям бота вашего города\n#2 20₽ - Поднятие в ленте')
-        await state.set_state(Form.vote_up)
+        if prod['ModerStatus'][int(callback_query.data[2:callback_query.data.index('|')])] == 'Moderated':
+            await bot.delete_message(callback_query.message.chat.id, callback_query.message.message_id)
+            up_index[str(callback_query.data[callback_query.data.index('|')+1::])] = int(callback_query.data[2:callback_query.data.index('|')])
+            await bot.send_message(callback_query.message.chat.id,'Выберите тип провижения:\n#1 200₽ - Рассылка всем пользователям бота вашего города\n#2 20₽ - Поднятие в ленте')
+            await state.set_state(Form.vote_up)
+        else:
+            await callback_query.answer('Товар еще не прошел модерацию')
     elif callback_query.data[0:5] == 'upadm':
         try:
-            print(int(callback_query.data[5::]))
             prod['ModerStatus'].pop(int(callback_query.data[5::]))
             prod['ModerStatus'].insert(int(callback_query.data[5::]),'Moderated')
             await bot.send_message(callback_query.message.chat.id, 'Товар выставлен на продажу.')
@@ -1047,6 +1081,23 @@ async def callback_query_handler(callback_query: types.CallbackQuery,state: FSMC
         )
         await state.set_state(Form.search_of_KeyWords)
         await bot.send_message(callback_query.message.chat.id,'Введите поисковой запрос',reply_markup=builder.as_markup())
+    if callback_query.data[0:8] == 'Обновить':
+        id = int(callback_query.data[8::])
+        builder = InlineKeyboardBuilder()
+        builder.add(types.InlineKeyboardButton(
+            text="Обновить",
+            callback_data="Обновить" + str(id))
+        )
+        await bot.edit_message_text(text=
+           callback_query.message.from_user.first_name + '\n=========================\nБаланс: '  # Выводим данные профиля
+            + str(userdata['Balance'][userdata['UserID'].index(id)])
+            + '₽\nРейтинг: ' + str(userdata['Рейтинг'][userdata['UserID'].index(id)])
+            + '\n=========================\nКол-во проданных товаров: '
+            + str(userdata['кол-во продаых товаров'][userdata['UserID'].index(id)])
+            + '\nКол-во товаров на продаже: ' + str(len(get_indexes(prod['UserID'], id)))
+            + '\n=========================\nТовары на продаже:\n' + search_your_products(id)
+            + '\n=========================\nЧтобы открыть страницу товара введите\n/order',chat_id=id,message_id=callback_query.message.message_id,
+            reply_markup=builder.as_markup())
 ##########################################################################
 async def main():
     bot = Bot(token=cfg.telegramAPI_TOKEN, parse_mode="HTML")
