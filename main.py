@@ -29,9 +29,9 @@ bot = Bot(token=cfg.telegramAPI_TOKEN, parse_mode="HTML")
 ##########################################################################
 #Считываем данные с Excel файле в словарь df
 df = pd.read_excel('DataBase/Sheets/DataFrame.xlsx',usecols=[1,2,3]).to_dict('list')
-userdata = pd.read_excel('DataBase/Sheets/UserData.xlsx',usecols=[1,2,3,4,5,6,7]).to_dict('list')
+userdata = pd.read_excel('DataBase/Sheets/UserData.xlsx',usecols=[1,2,3,4,5,6,7,8]).to_dict('list')
 Citis = pd.read_excel('DataBase/Sheets/Сitis.xlsx',usecols=[1,2]).to_dict('list')
-prod = pd.read_excel('DataBase/Sheets/Products.xlsx',usecols=[1,2,3,4,5,6,7,8,9,10,11]).to_dict('list')
+prod = pd.read_excel('DataBase/Sheets/Products.xlsx',usecols=[1,2,3,4,5,6,7,8,9,10,11,12]).to_dict('list')
 VapeDataBase = pd.read_excel('DataBase/Sheets/VapeDataBase.xlsx').to_dict('list')
 ##########################################################################
 
@@ -113,6 +113,7 @@ def get_mediaGroup(userID,gl):
         prod['ProdType'].append(gl[0])
         prod['UserID'].append(int(userID))
         prod['ModerStatus'].append('moderating')
+        prod['UserName2'].append(userdata['UserName2'][userdata['UserID'].index(int(userID))])
         st = '|'
         print(len(gl[6::]))
         print(gl)
@@ -138,6 +139,7 @@ def non_mdeiaGroup(userID,gl):
     prod['ModerStatus'].append('moderating')
     prod['PhotoID'].append('non')
     prod['City'].append(userdata['City'][userdata['UserID'].index(int(userID))])
+    prod['UserName2'].append(userdata['UserName2'][userdata['UserID'].index(int(userID))])
     pd.DataFrame(prod).to_excel('DataBase/Sheets/Products.xlsx')
 def getMdediaGroup(userID,gl):
     if len(gl) > 4:
@@ -150,6 +152,7 @@ def getMdediaGroup(userID,gl):
         prod['ProdType'].append(gl[0])
         prod['UserID'].append(int(userID))
         prod['ModerStatus'].append('moderating')
+        prod['UserName2'].append(userdata['UserName2'][userdata['UserID'].index(int(userID))])
         st = '|'
         print(len(gl[4::]))
         print(gl)
@@ -175,6 +178,7 @@ def nonMdeiaGroup(userID, gl):
     prod['ModerStatus'].append('moderating')
     prod['PhotoID'].append('non')
     prod['City'].append(userdata['City'][userdata['UserID'].index(int(userID))])
+    prod['UserName2'].append(userdata['UserName2'][userdata['UserID'].index(int(userID))])
     pd.DataFrame(prod).to_excel('DataBase/Sheets/Products.xlsx')
 ##########################################################################
 
@@ -227,6 +231,7 @@ async def command_start(message: types.message, state: FSMContext) -> None:
                                  '/report - Обращение к создателям бота\n'
                                  'Бот сейчас находится находится в стадии бета-теста. Возможны некоторые баги и не доработки.'
                                  'Если вы встретите такие, то прозьба отправить репорт с помощью команды /report.',reply_markup=builder.as_markup())
+            print(userdata)
         else:
             await message.answer('Для начала работы мне потребуются некоторые твои данные.', #Запрашиваем данные у пользователя
                 reply_markup=types.ReplyKeyboardRemove())
@@ -252,6 +257,7 @@ async def City(message: Message, state: FSMContext) -> None:
             userdata['кол-во продаых товаров'].append(0)
             userdata['Рейтинг'].append(5.0)
             userdata['Balance'].append(0.0)
+            userdata['UserName2'].append(message.from_user.username)
             await state.set_state(Form.Yes_or_No)
             pd.DataFrame(userdata).to_excel('DataBase/Sheets/UserData.xlsx',sheet_name='Users')
         else:
@@ -287,6 +293,7 @@ async def Yes_or_No(message: Message, state: FSMContext) -> None:
             userdata['Товары на продаже'].pop(userdata['UserName'].index(message.from_user.first_name))
             userdata['кол-во продаых товаров'].pop(userdata['UserName'].index(message.from_user.first_name))
             userdata['Рейтинг'].pop(userdata['UserName'].index(message.from_user.first_name))
+            userdata['UserName2'].pop(userdata['UserName'].index(message.from_user.first_name))
             userdata['UserName'].remove(message.from_user.first_name)
             pd.DataFrame(userdata).to_excel('DataBase/Sheets/UserData.xlsx', sheet_name='Users')
             await message.answer('Хорошо. Введите новое название города.')
@@ -685,10 +692,16 @@ async def add_vote_search_type(message: Message,state: FSMContext) -> None:
         index = search_indexes[str(message.from_user.id)]
         for i in range(len(search_indexes[str(message.from_user.id)])):
             builder = InlineKeyboardBuilder()
-            builder.add(types.InlineKeyboardButton(
-                text="Написать продавцу",
-                url='tg://openmessage?user_id=' + str(prod['UserID'][index[i]]),
-            ))
+            if prod['UserName2'][index[i]] == 'nan':
+                builder.add(types.InlineKeyboardButton(
+                    text="Написать продавцу",
+                    url='tg://openmessage?user_id=' + str(prod['UserID'][index[i]]),
+                ))
+            else:
+                builder.add(types.InlineKeyboardButton(
+                    text="Написать продавцу",
+                    url='https://t.me/' + str(prod['UserName2'][index[i]]),
+                ))
             if str(prod['PhotoID'][index[i]]) != 'non':  # Елси к товару приложены фотографии
                 await state.clear()
                 media = []
@@ -765,10 +778,16 @@ async def viewing_output(message: Message,state: FSMContext) -> None:
             await message.answer('Список закончился. Поиск отменен',reply_markup=types.ReplyKeyboardRemove())
         else:
             builder = InlineKeyboardBuilder()
-            builder.add(types.InlineKeyboardButton(
+            if prod['UserName2'][index[i]] == 'nan':
+                builder.add(types.InlineKeyboardButton(
+                        text="Написать продавцу",
+                        url='tg://openmessage?user_id=' + str(prod['UserID'][index[i]]),
+                ))
+            else:
+                builder.add(types.InlineKeyboardButton(
                     text="Написать продавцу",
-                    url='tg://openmessage?user_id=' + str(prod['UserID'][index[i]]),
-            ))
+                    url='https://t.me/' + str(prod['UserName2'][index[i]]),
+                ))
             if str(prod['PhotoID'][index[i]]) != 'non':  # Елси к товару приложены фотографии
                 media = []
                 indexph = get_indexes(list(prod['PhotoID'][index[i]]),
@@ -800,10 +819,16 @@ async def viewing_output(message: Message,state: FSMContext) -> None:
             await message.answer('Список закончился. Поиск отменен',reply_markup=types.ReplyKeyboardRemove())
         else:
             builder = InlineKeyboardBuilder()
-            builder.add(types.InlineKeyboardButton(
+            if prod['UserName2'][index[i]] == 'nan':
+                builder.add(types.InlineKeyboardButton(
                     text="Написать продавцу",
                     url='tg://openmessage?user_id=' + str(prod['UserID'][index[i]]),
-            ))
+                ))
+            else:
+                builder.add(types.InlineKeyboardButton(
+                    text="Написать продавцу",
+                    url='https://t.me/' + str(prod['UserName2'][index[i]]),
+                ))
             if str(prod['PhotoID'][index[i]]) != 'non':  # Елси к товару приложены фотографии
                 media = []
                 indexph = get_indexes(list(prod['PhotoID'][index[i]]),
@@ -862,10 +887,16 @@ async def pay_amount(message: Message,state: FSMContext) -> None:
 async def vote_up(message: Message,state: FSMContext) -> None:
     if message.text == '1':
         builder = InlineKeyboardBuilder()
-        builder.add(types.InlineKeyboardButton(
-            text="Написать продавцу",
-            url='tg://openmessage?user_id=' + str(message.from_user.id),
-        ))
+        if str(message.from_user.username) == 'None':
+            builder.add(types.InlineKeyboardButton(
+                text="Написать продавцу",
+                url='tg://openmessage?user_id=' + str(message.from_user.id),
+            ))
+        else:
+            builder.add(types.InlineKeyboardButton(
+                text="Написать продавцу",
+                url='https://t.me/' + str(message.from_user.username),
+            ))
         if userdata['Balance'][userdata['UserID'].index(int(message.from_user.id))] - 200 >= 0:
             userdata['Balance'][userdata['UserID'].index(int(message.from_user.id))] -= 200
             pd.DataFrame(userdata).to_excel('DataBase/Sheets/UserData.xlsx', sheet_name='Users')
@@ -923,6 +954,7 @@ async def vote_up(message: Message,state: FSMContext) -> None:
             prod['PhotoID'].insert(1,prod['PhotoID'][index])
             prod['City'].insert(1,prod['City'][index])
             prod['ProdType'].insert(1,prod['ProdType'][index])
+            prod['UserName2'].insert(1,prod['ProdType'][index])
             #########################################
             prod['ProdID'].pop(int(index)+1)
             prod['Company'].pop(int(index)+1)
@@ -935,6 +967,7 @@ async def vote_up(message: Message,state: FSMContext) -> None:
             prod['PhotoID'].pop(int(index)+1)
             prod['City'].pop(int(index)+1)
             prod['ProdType'].pop(int(index)+1)
+            prod['UserName2'].pop(int(index)+1)
             pd.DataFrame(prod).to_excel('DataBase/Sheets/Products.xlsx')
             await message.answer('Услуга оказана.')
         else:
@@ -982,6 +1015,7 @@ async def bug_report(message: Message, state: FSMContext) -> None:
         userdata['Товары на продаже'].pop(userdata['UserName'].index(message.from_user.first_name))
         userdata['кол-во продаых товаров'].pop(userdata['UserName'].index(message.from_user.first_name))
         userdata['Рейтинг'].pop(userdata['UserName'].index(message.from_user.first_name))
+        userdata['UserName2'].pop(userdata['UserName'].index(message.from_user.first_name))
         userdata['UserName'].remove(message.from_user.first_name)
         pd.DataFrame(userdata).to_excel('DataBase/Sheets/UserData.xlsx', sheet_name='Users')
         await message.answer('Профиль удаен. Возвращайтесь к нам еще.',reply_markup=types.ReplyKeyboardRemove())
@@ -1102,6 +1136,7 @@ async def callback_query_handler(callback_query: types.CallbackQuery,state: FSMC
             prod['PhotoID'].pop(index)
             prod['City'].pop(index)
             prod['ProdType'].pop(index)
+            prod['UserName2'].pop(index)
             await bot.send_message(callback_query.message.chat.id,'Товар удален')
             await bot.delete_message(callback_query.message.chat.id,callback_query.message.message_id)
             pd.DataFrame(prod).to_excel('DataBase/Sheets/Products.xlsx')
@@ -1125,6 +1160,7 @@ async def callback_query_handler(callback_query: types.CallbackQuery,state: FSMC
             prod['PhotoID'].pop(index)
             prod['City'].pop(index)
             prod['ProdType'].pop(index)
+            prod['UserName2'].pop(index)
             await bot.send_message(callback_query.message.chat.id,'Товар удален ')
             await bot.delete_message(callback_query.message.chat.id,callback_query.message.message_id)
             pd.DataFrame(prod).to_excel('DataBase/Sheets/Products.xlsx')
@@ -1174,7 +1210,7 @@ async def callback_query_handler(callback_query: types.CallbackQuery,state: FSMC
             callback_data="Обновить" + str(id))
         )
         await bot.edit_message_text(text=
-           callback_query.message.from_user.first_name + '\n=========================\nБаланс: '  # Выводим данные профиля
+            '\n=========================\nБаланс: '  # Выводим данные профиля
             + str(userdata['Balance'][userdata['UserID'].index(id)])
             + '₽\nРейтинг: ' + str(userdata['Рейтинг'][userdata['UserID'].index(id)])
             + '\n=========================\nКол-во проданных товаров: '
