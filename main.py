@@ -243,7 +243,6 @@ async def command_start(message: types.message, state: FSMContext) -> None:
                                  '/delref - удалить реферальный код\n'
                                  'Бот сейчас находится находится в стадии бета-теста. Возможны некоторые баги и не доработки.'
                                  'Если вы встретите такие, то прозьба отправить репорт с помощью команды /report.',reply_markup=builder.as_markup())
-            print(userdata)
         else:
             await message.answer('Для начала работы мне потребуются некоторые твои данные.', #Запрашиваем данные у пользователя
                 reply_markup=types.ReplyKeyboardRemove())
@@ -1045,7 +1044,8 @@ async def add_ref(message: Message, state: FSMContext) -> None:
         await message.answer('Реферальный код создан')
         await state.clear()
     else:
-        await message.answer('Такой реферальный код уже существует. Введите другой')@form_router.message(Command("delref"))
+        await message.answer('Такой реферальный код уже существует. Введите другой')
+@form_router.message(Command("delref"))
 async def command_ref(message: Message,state: FSMContext) -> None:
     userdata['refCode'][userdata['UserID'].index(message.from_user.id)] = 'nan'
     pd.DataFrame(userdata).to_excel('DataBase/Sheets/UserData.xlsx', sheet_name='Users')
