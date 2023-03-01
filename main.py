@@ -23,13 +23,15 @@ from yoomoney import Quickpay,Client
 
 import cfg
 
+from datetime import datetime,timedelta
+
 form_router = Router()
 bot = Bot(token=cfg.telegramAPI_TOKEN, parse_mode="HTML")
 
 ##########################################################################
 #Считываем данные с Excel файле в словарь df
 df = pd.read_excel('DataBase/Sheets/DataFrame.xlsx',usecols=[1,2,3]).to_dict('list')
-userdata = pd.read_excel('DataBase/Sheets/UserData.xlsx',usecols=[1,2,3,4,5,6,7,8]).to_dict('list')
+userdata = pd.read_excel('DataBase/Sheets/UserData.xlsx',usecols=[1,2,3,4,5,6,7,8,9,10]).to_dict('list')
 Citis = pd.read_excel('DataBase/Sheets/Сitis.xlsx',usecols=[1,2]).to_dict('list')
 prod = pd.read_excel('DataBase/Sheets/Products.xlsx',usecols=[1,2,3,4,5,6,7,8,9,10,11,12]).to_dict('list')
 VapeDataBase = pd.read_excel('DataBase/Sheets/VapeDataBase.xlsx').to_dict('list')
@@ -70,6 +72,12 @@ class Form(StatesGroup):
     viewing_output = State() #Просмотр выдачи
     ##########################################################################
 
+    #Реферальные коды
+    ##########################################################################
+    ref = State()
+    add_ref = State()
+    ##########################################################################
+
     #Оплата
     ##########################################################################
     pay_amount = State()
@@ -88,6 +96,7 @@ search_indexes = {}
 search = {}
 label = {}
 up_index = {}
+up_log = {}
 #Функции обработчики
 ##########################################################################
 #Функция возвращает все вхождения элемента в списке
@@ -229,6 +238,9 @@ async def command_start(message: types.message, state: FSMContext) -> None:
                                  '/search - Поиск товаров\n'
                                  '/pay - Задонатить на баланс бота\n'
                                  '/report - Обращение к создателям бота\n'
+                                 '/ref - Ввести реферальный код \n'
+                                 '/addref - Создать свой реферальный код \n'
+                                 '/delref - удалить реферальный код\n'
                                  'Бот сейчас находится находится в стадии бета-теста. Возможны некоторые баги и не доработки.'
                                  'Если вы встретите такие, то прозьба отправить репорт с помощью команды /report.',reply_markup=builder.as_markup())
             print(userdata)
@@ -283,6 +295,9 @@ async def Yes_or_No(message: Message, state: FSMContext) -> None:
                 '/search - Поиск товаров\n'
                 '/pay - Задонатить на баланс бота\n'
                 '/report - Обращение к создателям бота\n'
+                '/ref - Ввести реферальный код \n'
+                '/addref - Создать свой реферальный код \n'
+                '/delref - удалить реферальный код\n'
                 'Бот сейчас находится находится в стадии бета-теста. Возможны некоторые баги и недоработки.'
                 'Если вы встретите такие, то прозьба отправить репорт с помощью команды /report.',reply_markup=builder.as_markup()
             )
@@ -314,11 +329,13 @@ async def command_profile(message: Message) -> None:
             await message.answer(message.from_user.first_name+'\n=========================\nБаланс: ' #Выводим данные профиля
                                  +str(userdata['Balance'][userdata['UserID'].index(message.chat.id)])
                                  +'₽\nРейтинг: ' + str(userdata['Рейтинг'][userdata['UserID'].index(message.chat.id)])
-                                    +'\n=========================\nКол-во проданных товаров: '
-                                    +str(userdata['кол-во продаых товаров'][userdata['UserID'].index(message.chat.id)])
+                                    +'\n=========================\nКол-во рефералов: '
+                                    +str(userdata['Рефералы'][userdata['UserID'].index(message.chat.id)])
                                  +'\nКол-во товаров на продаже: ' + str(len(get_indexes(prod['UserID'],message.chat.id)))
                                  +'\n=========================\nТовары на продаже:\n'+search_your_products(message.chat.id)
                                  +'\n=========================\nЧтобы открыть страницу товара введите\n/order',reply_markup=builder.as_markup())
+    else:
+        await message.answer('Напишите /start')
 ##########################################################################
 
 #Вызов страницы товара
@@ -334,6 +351,8 @@ async def command_profile(message: Message,state: FSMContext) -> None:
             )
             await state.set_state(Form.vote_my_product) #Запрос id товара из профиля
             await message.answer('Введите номер товара',reply_markup=builder.as_markup())
+    else:
+        await message.answer('Напишите /start')
 @form_router.message(Form.vote_my_product)
 async def vote_my_product(message: Message, state: FSMContext) -> None:
     if message.chat.type == 'private':
@@ -389,6 +408,8 @@ async def command_profile(message: Message,state: FSMContext) -> None:
                             KeyboardButton(text="Мехмоды"),
                             KeyboardButton(text="Боксмоды/Подмоды"),
                         ]],resize_keyboard=True))
+    else:
+        await message.answer('Напишите /start')
 @form_router.message(Form.add_productType) #Запрос типа продукта
 async def add_productType(message: Message,state: FSMContext) -> None:
     if message.chat.type == 'private':
@@ -425,8 +446,8 @@ async def add_company(message: Message,state: FSMContext) -> None:
                 st = ''
                 x = 0
                 for i in range(len(VapeDataBase[gl[str(message.from_user.id)][1]])):
+                    x = i+1
                     if str(VapeDataBase[gl[str(message.from_user.id)][1]][i]) == 'nan': #формируем список устройств
-                        x = i
                         break
                     st += '#' + str(i + 1) + ' ' + str(VapeDataBase[gl[str(message.from_user.id)][1]][i]) + '\n'
                 await message.answer('Выберите устройство:\n'+st+'#'+str(x+1)+' Другое',reply_markup=builder.as_markup())
@@ -449,8 +470,8 @@ async def add_companyName(message: Message,state: FSMContext) -> None:
             print(int(message.text))
             x = 0
             for i in range(len(VapeDataBase[gl[str(message.from_user.id)][1]])):
+                x=i+1
                 if str(VapeDataBase[gl[str(message.from_user.id)][1]][i]) == 'nan':
-                    x = i
                     break
             if int(message.text) != x+1 and int(message.text) < x+1 and int(message.text) > 0: #Если выбрано верное значение то заносим название в базу и переходим к заполнению названия
                 await state.set_state(Form.add_name)
@@ -555,6 +576,8 @@ async def command_search(message: Message,state: FSMContext) -> None:
                             KeyboardButton(text="По категориям"),
                             KeyboardButton(text="По ключевым словам"),
                         ]],resize_keyboard=True))
+    else:
+        await message.answer('Напишите /start')
 @form_router.message(Form.vote_search)
 async def vote_search(message: Message,state: FSMContext) -> None:
     if message.chat.type == 'private':
@@ -692,7 +715,7 @@ async def add_vote_search_type(message: Message,state: FSMContext) -> None:
         index = search_indexes[str(message.from_user.id)]
         for i in range(len(search_indexes[str(message.from_user.id)])):
             builder = InlineKeyboardBuilder()
-            if prod['UserName2'][index[i]] == 'nan':
+            if str(prod['UserName2'][index[i]]) == 'nan':
                 builder.add(types.InlineKeyboardButton(
                     text="Написать продавцу",
                     url='tg://openmessage?user_id=' + str(prod['UserID'][index[i]]),
@@ -885,59 +908,68 @@ async def pay_amount(message: Message,state: FSMContext) -> None:
 ##########################################################################
 @form_router.message(Form.vote_up)
 async def vote_up(message: Message,state: FSMContext) -> None:
+    print(datetime.now()+timedelta(minutes=2))
+    try:
+        print(up_log[str(message.from_user.id)])
+    except:
+        up_log[str(message.from_user.id)] = datetime.now()-timedelta(hours=13)
     if message.text == '1':
-        builder = InlineKeyboardBuilder()
-        if str(message.from_user.username) == 'None':
-            builder.add(types.InlineKeyboardButton(
-                text="Написать продавцу",
-                url='tg://openmessage?user_id=' + str(message.from_user.id),
-            ))
-        else:
-            builder.add(types.InlineKeyboardButton(
-                text="Написать продавцу",
-                url='https://t.me/' + str(message.from_user.username),
-            ))
-        if userdata['Balance'][userdata['UserID'].index(int(message.from_user.id))] - 200 >= 0:
-            userdata['Balance'][userdata['UserID'].index(int(message.from_user.id))] -= 200
-            pd.DataFrame(userdata).to_excel('DataBase/Sheets/UserData.xlsx', sheet_name='Users')
-            index = up_index[str(message.from_user.id)]
-            x = 0
-            for i in range(len(userdata['UserID'])):
-                if userdata['City'][i] == userdata['City'][userdata['UserID'].index(int(message.from_user.id))]:
-                    if prod['PhotoID'][index] != 'non':
-                        groupID = userdata['UserID'][i]
-                        media = []
-                        indexph = get_indexes(list(prod['PhotoID'][index]), '|')
-                        for i in range(len(indexph) - 1):
-                            if i == 0:
-                                media.append(types.InputMediaPhoto(
-                                    media=prod['PhotoID'][index][indexph[i] + 1:indexph[i + 1]],
-                                    caption='Название: ' + str(prod['ProductsName'][index])
-                                            + '\nЦена: ' + str(prod['Amount'][index]) + '₽'
-                                            + '\n=========================\nОписание:\n' + str(
-                                        prod['ProductsDescription'][index])
-                                            + '\n========================='))
-                            else:
-                                media.append(types.InputMediaPhoto(
-                                    media=prod['PhotoID'][index][indexph[i] + 1:indexph[i + 1]]))
-                        await SendMediaGroup(chat_id=groupID, media=media)
-                        await bot.send_message(groupID, '⬇️Действия с товаром⬇️', reply_markup=builder.as_markup())
-                        await state.clear()
-                    else:
-                        groupID = userdata['UserID'][i]
-                        await bot.send_message(groupID, 'Название: ' + str(prod['ProductsName'][index])
-                                               + '\nЦена: ' + str(prod['Amount'][index]) + '₽'
-                                               + '\n=========================\nОписание:\n' + str(
-                            prod['ProductsDescription'][index])
-                                               + '\n=========================')
-                        await bot.send_message(groupID,'⬇️Действия с товаром⬇️',reply_markup=builder.as_markup())
-                        await state.clear()
-                x+=1
+        if up_log[str(message.from_user.id)]+timedelta(hours=12) < datetime.now():
+            builder = InlineKeyboardBuilder()
+            if str(message.from_user.username) == 'None':
+                builder.add(types.InlineKeyboardButton(
+                    text="Написать продавцу",
+                    url='tg://openmessage?user_id=' + str(message.from_user.id),
+                ))
+            else:
+                builder.add(types.InlineKeyboardButton(
+                    text="Написать продавцу",
+                    url='https://t.me/' + str(message.from_user.username),
+                ))
+            if userdata['Balance'][userdata['UserID'].index(int(message.from_user.id))] - 200 >= 0:
+                up_log[str(message.from_user.id)] = datetime.now()
+                userdata['Balance'][userdata['UserID'].index(int(message.from_user.id))] -= 200
+                pd.DataFrame(userdata).to_excel('DataBase/Sheets/UserData.xlsx', sheet_name='Users')
+                index = up_index[str(message.from_user.id)]
+                x = 0
+                for i in range(len(userdata['UserID'])):
+                    if userdata['City'][i] == userdata['City'][userdata['UserID'].index(int(message.from_user.id))]:
+                        if prod['PhotoID'][index] != 'non':
+                            groupID = userdata['UserID'][i]
+                            media = []
+                            indexph = get_indexes(list(prod['PhotoID'][index]), '|')
+                            for i in range(len(indexph) - 1):
+                                if i == 0:
+                                    media.append(types.InputMediaPhoto(
+                                        media=prod['PhotoID'][index][indexph[i] + 1:indexph[i + 1]],
+                                        caption='Название: ' + str(prod['ProductsName'][index])
+                                                + '\nЦена: ' + str(prod['Amount'][index]) + '₽'
+                                                + '\n=========================\nОписание:\n' + str(
+                                            prod['ProductsDescription'][index])
+                                                + '\n========================='))
+                                else:
+                                    media.append(types.InputMediaPhoto(
+                                        media=prod['PhotoID'][index][indexph[i] + 1:indexph[i + 1]]))
+                            await SendMediaGroup(chat_id=groupID, media=media)
+                            await bot.send_message(groupID, '⬇️Действия с товаром⬇️', reply_markup=builder.as_markup())
+                            await state.clear()
+                        else:
+                            groupID = userdata['UserID'][i]
+                            await bot.send_message(groupID, 'Название: ' + str(prod['ProductsName'][index])
+                                                   + '\nЦена: ' + str(prod['Amount'][index]) + '₽'
+                                                   + '\n=========================\nОписание:\n' + str(
+                                prod['ProductsDescription'][index])
+                                                   + '\n=========================')
+                            await bot.send_message(groupID,'⬇️Действия с товаром⬇️',reply_markup=builder.as_markup())
+                            await state.clear()
+                    x+=1
 
-            await message.answer('Услуга оказана. Кол-во человек которое увидело ваше объявление: ' + str(x-1))
+                await message.answer('Услуга оказана. Кол-во человек которое увидело ваше объявление: ' + str(x-1))
+            else:
+                await message.answer('На вашем счете не достаточно средств.\nВы можете пополнить баланс с помощью комады /pay.')
+                await state.clear()
         else:
-            await message.answer('На вашем счете не достаточно средств.\nВы можете пополнить баланс с помощью комады /pay.')
-            await state.clear()
+            await message.answer('Вам нельзя использовать этот тип продвижения.\nЕще: ' + str(up_log[str(message.from_user.id)]+timedelta(hours=12)-datetime.now())[0:8])
     elif message.text == '2':
         if userdata['Balance'][userdata['UserID'].index(int(message.from_user.id))] - 20 >= 0:
             userdata['Balance'][userdata['UserID'].index(int(message.from_user.id))] -= 20
@@ -994,6 +1026,53 @@ async def bug_report(message: Message,state: FSMContext) -> None:
                            ,reply_markup=builder.as_markup())
     await state.clear()
     await message.answer('Ваше обращение отправлено')
+##########################################################################
+
+#Реферальная система
+##########################################################################
+@form_router.message(Command("addref"))
+async def command_ref(message: Message,state: FSMContext) -> None:
+    if  str(userdata['refCode'][userdata['UserID'].index(message.from_user.id)]) == 'nan':
+        await message.answer('Введите реферальный код')
+        await state.set_state(Form.add_ref)
+    else:
+        await message.answer('У вас уже есть реферальный код "'+str(userdata['refCode'][userdata['UserID'].index(message.from_user.id)])+'"')
+@form_router.message(Form.add_ref)
+async def add_ref(message: Message, state: FSMContext) -> None:
+    if not(message.text in userdata['refCode']):
+        userdata['refCode'][userdata['UserID'].index(message.from_user.id)] = str(message.text)
+        pd.DataFrame(userdata).to_excel('DataBase/Sheets/UserData.xlsx', sheet_name='Users')
+        await message.answer('Реферальный код создан')
+        await state.clear()
+    else:
+        await message.answer('Такой реферальный код уже существует. Введите другой')@form_router.message(Command("delref"))
+async def command_ref(message: Message,state: FSMContext) -> None:
+    userdata['refCode'][userdata['UserID'].index(message.from_user.id)] = 'nan'
+    pd.DataFrame(userdata).to_excel('DataBase/Sheets/UserData.xlsx', sheet_name='Users')
+    await message.answer('Реферальный код удален')
+@form_router.message(Command("ref"))
+async def command_ref(message: Message,state: FSMContext) -> None:
+    if str(userdata['UseRefCode'][userdata['UserID'].index(int(message.from_user.id))]) == 'nan':
+        await message.answer('Введите реферальный код')
+        await state.set_state(Form.ref)
+    else:
+        await message.answer('Вы уже вводили реферальный код')
+@form_router.message(Form.ref)
+async def add_ref(message: Message, state: FSMContext) -> None:
+    if message.text in userdata['refCode']:
+        if str(userdata['refCode'][userdata['UserID'].index(message.from_user.id)]) != message.text:
+            userdata['UseRefCode'][userdata['UserID'].index(message.from_user.id)] = message.text
+            userdata['Рефералы'][userdata['refCode'].index(str(message.text))] = int(userdata['Рефералы'][userdata['refCode'].index(str(message.text))])+1
+            userID = int(userdata['UserID'][userdata['refCode'].index(str(message.text))])
+            userdata['Balance'][userdata['UserID'].index(userID)]+=50
+            userdata['Balance'][userdata['UserID'].index(int(message.from_user.id))] += 100
+            await message.answer('За активацию промокода вам начисленно 100₽')
+            await bot.send_message(userID,'У вас новый реферал "'+str(message.from_user.first_name)+'"\nЗа него вам начисленно 50₽')
+            pd.DataFrame(userdata).to_excel('DataBase/Sheets/UserData.xlsx', sheet_name='Users')
+        else:
+            await message.answer('Это ваш реферальный код')
+    else:
+        await message.answer('Такого кода не существует')
 ##########################################################################
 
 #Удаление профиля
@@ -1109,11 +1188,14 @@ async def callback_query_handler(callback_query: types.CallbackQuery,state: FSMC
                                 +'\nРаздел: '+str(prod['ProdType'][index]))
         await bot.send_message(groupID, '⬇️Действия с товаром⬇️', reply_markup=builder.as_markup())
         await state.clear()
-@form_router.callback_query(Form.pay_amount) #Колбеки фотграфий
+@form_router.callback_query(Form.pay_amount) #Колбеки оплаты
 async def callback_query_handler(callback_query: types.CallbackQuery,state: FSMContext) -> any:
     index = get_indexes(list(callback_query.data),'|')
     if check_pay(callback_query.data[index[0]+1:index[1]],callback_query.data[0:index[0]]):
         userdata['Balance'][userdata['UserID'].index(int(callback_query.data[index[0]+1:index[1]]))] += int(callback_query.data[index[1]+1::])
+        ref = str(userdata['UseRefCode'][userdata['UserID'].index(int(callback_query.data[index[0] + 1:index[1]]))])
+        if ref != 'nan':
+            userdata['Balance'][userdata['refCode'].index(ref)]+= int(callback_query.data[index[1]+1::])*0.3
         pd.DataFrame(userdata).to_excel('DataBase/Sheets/UserData.xlsx', sheet_name='Users')
         await bot.delete_message(callback_query.message.chat.id,callback_query.message.message_id)
         await callback_query.answer('Оплата прошла деньги зачислены на баланс')
@@ -1213,8 +1295,8 @@ async def callback_query_handler(callback_query: types.CallbackQuery,state: FSMC
             '\n=========================\nБаланс: '  # Выводим данные профиля
             + str(userdata['Balance'][userdata['UserID'].index(id)])
             + '₽\nРейтинг: ' + str(userdata['Рейтинг'][userdata['UserID'].index(id)])
-            + '\n=========================\nКол-во проданных товаров: '
-            + str(userdata['кол-во продаых товаров'][userdata['UserID'].index(id)])
+            + '\n=========================\nКол-во Рефералов: '
+            + str(userdata['Рефералы'][userdata['UserID'].index(id)])
             + '\nКол-во товаров на продаже: ' + str(len(get_indexes(prod['UserID'], id)))
             + '\n=========================\nТовары на продаже:\n' + search_your_products(id)
             + '\n=========================\nЧтобы открыть страницу товара введите\n/order',chat_id=id,message_id=callback_query.message.message_id,
