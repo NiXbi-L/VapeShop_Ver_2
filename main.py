@@ -18,8 +18,8 @@ import aiogram
 
 import pandas as pd
 
-import yoomoney
-from yoomoney import Quickpay,Client
+import json
+from yookassa import Configuration,Payment
 
 import cfg
 
@@ -37,8 +37,9 @@ prod = pd.read_excel('DataBase/Sheets/Products.xlsx',usecols=[1,2,3,4,5,6,7,8,9,
 VapeDataBase = pd.read_excel('DataBase/Sheets/VapeDataBase.xlsx').to_dict('list')
 ##########################################################################
 
-#Создаем объект client
-client = Client(cfg.yoomoneyAPI_TOKEN)
+#Привязываем платежные данные
+Configuration.account_id = cfg.ShopID
+Configuration.secret_key = cfg.PaymentAPI_key
 
 #Состояния пользователя
 class Form(StatesGroup):
@@ -193,32 +194,34 @@ def nonMdeiaGroup(userID, gl):
 
 #Функции платежей
 ##########################################################################
-def check_pay(username,label):
-    history = client.operation_history(label=label)
-
-    for operation in history.operations:
-        if operation.status == 'success':
-            return True
-        else:
-            return False
+def check_pay(payment_id):
+    payment = json.loads((Payment.find_one(payment_id)).json())
+    if payment['status'] == 'pending':
+        return False
+    elif payment['status']=='succeeded':
+        return True
     else:
         return False
-#Функия создания url для оплаты по сумме, тегу, username и типу товара
-def create_pay_url(sum,username):
-    quickpay = Quickpay(
-        receiver=cfg.yoomoneyWallet,
-        quickpay_form="shop",
-        targets="Payment for services",
-        paymentType="SB",
-        sum=sum,
-        label=str(sorted(df['PayID'])[len(df['PayID'])-1]+1)
-    )
-    label[str(username)] = sorted(df['PayID'])[len(df['PayID']) - 1] + 1
-    df['UserName'].append(username)
-    df['PayID'].append(int(sorted(df['PayID'])[len(df['PayID'])-1]+1))
-    df['PayAmunt'].append(sum)
-    pd.DataFrame(df).to_excel('DataBase/Sheets/DataFrame.xlsx',sheet_name='Payments')
-    return quickpay.redirected_url
+def create_pay_url(sum):
+    payment = Payment.create({
+        "amount": {
+            "value": sum,
+        "currency": "RUB"
+    },
+        "payment_method_data": {
+        "type": "bank_card"
+    },
+    "confirmation": {
+        "type": "redirect",
+        "return_url": "https://t.me/TrueVaper_bot"
+    },
+    "capture": True,
+    "description": 'Оплата услуг продвижения'
+    })
+    payment_data = json.loads(payment.json())
+    payment_id = payment_data['id']
+    payment_url = (payment_data['confirmation'])['confirmation_url']
+    return [payment_id,payment_url]
 ##########################################################################
 
 #Форма регистрации
@@ -236,11 +239,11 @@ async def command_start(message: types.message, state: FSMContext) -> None:
                                  '/profile - Посмотреть свой профиль\n'
                                  '/add - Выстовить товар на продажу\n'
                                  '/search - Поиск товаров\n'
+                                 '/delprofile - Удалить профиль\n'
                                  '/pay - Задонатить на баланс бота\n'
                                  '/report - Обращение к создателям бота\n'
                                  '/ref - Ввести реферальный код \n'
                                  '/addref - Создать свой реферальный код \n'
-                                 '/delref - удалить реферальный код\n'
                                  'Бот сейчас находится находится в стадии бета-теста. Возможны некоторые баги и не доработки.'
                                  'Если вы встретите такие, то прозьба отправить репорт с помощью команды /report.',reply_markup=builder.as_markup())
         else:
@@ -264,7 +267,7 @@ async def City(message: Message, state: FSMContext) -> None:
             userdata['UserName'].append(message.from_user.first_name)
             userdata['City'].append(message.text)
             userdata['UserID'].append(message.chat.id)
-            userdata['Товары на продаже'].append(0)
+            userdata['Рефералы'].append(0)
             userdata['кол-во продаых товаров'].append(0)
             userdata['Рейтинг'].append(5.0)
             userdata['Balance'].append(0.0)
@@ -296,7 +299,6 @@ async def Yes_or_No(message: Message, state: FSMContext) -> None:
                 '/report - Обращение к создателям бота\n'
                 '/ref - Ввести реферальный код \n'
                 '/addref - Создать свой реферальный код \n'
-                '/delref - удалить реферальный код\n'
                 'Бот сейчас находится находится в стадии бета-теста. Возможны некоторые баги и недоработки.'
                 'Если вы встретите такие, то прозьба отправить репорт с помощью команды /report.',reply_markup=builder.as_markup()
             )
@@ -304,7 +306,7 @@ async def Yes_or_No(message: Message, state: FSMContext) -> None:
             userdata['City'].pop(userdata['UserName'].index(message.from_user.first_name))
             userdata['Balance'].pop(userdata['UserName'].index(message.from_user.first_name))
             userdata['UserID'].pop(userdata['UserName'].index(message.from_user.first_name))
-            userdata['Товары на продаже'].pop(userdata['UserName'].index(message.from_user.first_name))
+            userdata['Рефералы'].pop(userdata['UserName'].index(message.from_user.first_name))
             userdata['кол-во продаых товаров'].pop(userdata['UserName'].index(message.from_user.first_name))
             userdata['Рейтинг'].pop(userdata['UserName'].index(message.from_user.first_name))
             userdata['UserName2'].pop(userdata['UserName'].index(message.from_user.first_name))
@@ -882,23 +884,28 @@ async def viewing_output(message: Message,state: FSMContext) -> None:
 ##########################################################################
 @form_router.message(Command("pay"))
 async def command_pay(message: Message,state: FSMContext) -> None:
+    builder = InlineKeyboardBuilder()
+    builder.add(types.InlineKeyboardButton(
+        text="Отмена",
+        callback_data="Отмена")
+    )
     if message.from_user.id in userdata['UserID']:
         if message.chat.type == 'private':
             await state.set_state(Form.pay_amount)
-            await message.answer('Введите сумму для пополнения')
+            await message.answer('Введите сумму для пополнения',reply_markup=builder.as_markup())
 @form_router.message(Form.pay_amount)
 async def pay_amount(message: Message,state: FSMContext) -> None:
     if int(message.text) > 1:
-        pay_url = create_pay_url(int(message.text),message.from_user.id)
+        pay = create_pay_url(int(message.text))
         builder = InlineKeyboardBuilder()
         builder.add(types.InlineKeyboardButton(
-                text="Оплатить",
-                url = str(pay_url)),
-        )
+                    text="Оплатить",
+                    url = str(pay[1])),
+            )
         builder.row(types.InlineKeyboardButton(
-                    text="Проверить оплату",
-                    callback_data=str(label[str(message.from_user.id)])+'|'+str(message.from_user.id)+'|'+str(message.text)))
-        await message.answer('Заявка на оплату №' + str(label[str(message.from_user.id)])+'создана',reply_markup=builder.as_markup())
+                        text="Проверить оплату",
+                        callback_data=str(pay[0])+'|'+str(message.from_user.id)+'|'+str(message.text)))
+        await message.answer('Заявка на оплату создана',reply_markup=builder.as_markup())
     else:
         await message.answer('Введено неверное значение. Попробуйте еще раз',reply_markup=types.ReplyKeyboardRemove())
 ##########################################################################
@@ -1031,11 +1038,13 @@ async def bug_report(message: Message,state: FSMContext) -> None:
 ##########################################################################
 @form_router.message(Command("addref"))
 async def command_ref(message: Message,state: FSMContext) -> None:
-    if  str(userdata['refCode'][userdata['UserID'].index(message.from_user.id)]) == 'nan':
-        await message.answer('Введите реферальный код')
-        await state.set_state(Form.add_ref)
-    else:
-        await message.answer('У вас уже есть реферальный код "'+str(userdata['refCode'][userdata['UserID'].index(message.from_user.id)])+'"')
+    if message.from_user.id in userdata['UserID']:
+        if message.chat.type == 'private':
+            if  str(userdata['refCode'][userdata['UserID'].index(message.from_user.id)]) == 'nan':
+                await message.answer('Введите реферальный код')
+                await state.set_state(Form.add_ref)
+            else:
+                await message.answer('У вас уже есть реферальный код "'+str(userdata['refCode'][userdata['UserID'].index(message.from_user.id)])+'"')
 @form_router.message(Form.add_ref)
 async def add_ref(message: Message, state: FSMContext) -> None:
     if not(message.text in userdata['refCode']):
@@ -1045,18 +1054,15 @@ async def add_ref(message: Message, state: FSMContext) -> None:
         await state.clear()
     else:
         await message.answer('Такой реферальный код уже существует. Введите другой')
-@form_router.message(Command("delref"))
-async def command_ref(message: Message,state: FSMContext) -> None:
-    userdata['refCode'][userdata['UserID'].index(message.from_user.id)] = 'nan'
-    pd.DataFrame(userdata).to_excel('DataBase/Sheets/UserData.xlsx', sheet_name='Users')
-    await message.answer('Реферальный код удален')
 @form_router.message(Command("ref"))
 async def command_ref(message: Message,state: FSMContext) -> None:
-    if str(userdata['UseRefCode'][userdata['UserID'].index(int(message.from_user.id))]) == 'nan':
-        await message.answer('Введите реферальный код')
-        await state.set_state(Form.ref)
-    else:
-        await message.answer('Вы уже вводили реферальный код')
+    if message.from_user.id in userdata['UserID']:
+        if message.chat.type == 'private':
+            if str(userdata['UseRefCode'][userdata['UserID'].index(int(message.from_user.id))]) == 'nan':
+                await message.answer('Введите реферальный код')
+                await state.set_state(Form.ref)
+            else:
+                await message.answer('Вы уже вводили реферальный код')
 @form_router.message(Form.ref)
 async def add_ref(message: Message, state: FSMContext) -> None:
     if message.text in userdata['refCode']:
@@ -1079,22 +1085,26 @@ async def add_ref(message: Message, state: FSMContext) -> None:
 ##########################################################################
 @form_router.message(Command("delprofile"))
 async def command_pay(message: Message,state: FSMContext) -> None:
-    await message.answer('Это действие не возможно отменить и все данные о вас удалятся в том числе и баланс.\nВы точно хотиет удалить профиль?',
-                         reply_markup=types.ReplyKeyboardMarkup(keyboard=[[
-                            KeyboardButton(text="Да"),
-                            KeyboardButton(text="Нет"),
-                        ]],resize_keyboard=True))
-    await state.set_state(Form.del_frofile)
+    if message.from_user.id in userdata['UserID']:
+        if message.chat.type == 'private':
+            await message.answer('Это действие не возможно отменить и все данные о вас удалятся в том числе и баланс.\nВы точно хотиет удалить профиль?',
+                                 reply_markup=types.ReplyKeyboardMarkup(keyboard=[[
+                                    KeyboardButton(text="Да"),
+                                    KeyboardButton(text="Нет"),
+                                ]],resize_keyboard=True))
+            await state.set_state(Form.del_frofile)
 @form_router.message(Form.del_frofile)
 async def bug_report(message: Message, state: FSMContext) -> None:
     if message.text == 'Да':
         userdata['City'].pop(userdata['UserName'].index(message.from_user.first_name))
         userdata['Balance'].pop(userdata['UserName'].index(message.from_user.first_name))
         userdata['UserID'].pop(userdata['UserName'].index(message.from_user.first_name))
-        userdata['Товары на продаже'].pop(userdata['UserName'].index(message.from_user.first_name))
+        userdata['Рефералы'].pop(userdata['UserName'].index(message.from_user.first_name))
         userdata['кол-во продаых товаров'].pop(userdata['UserName'].index(message.from_user.first_name))
         userdata['Рейтинг'].pop(userdata['UserName'].index(message.from_user.first_name))
         userdata['UserName2'].pop(userdata['UserName'].index(message.from_user.first_name))
+        userdata['refCode'].pop(userdata['UserName'].index(message.from_user.first_name))
+        userdata['UseRefCode'].pop(userdata['UserName'].index(message.from_user.first_name))
         userdata['UserName'].remove(message.from_user.first_name)
         pd.DataFrame(userdata).to_excel('DataBase/Sheets/UserData.xlsx', sheet_name='Users')
         await message.answer('Профиль удаен. Возвращайтесь к нам еще.',reply_markup=types.ReplyKeyboardRemove())
@@ -1190,17 +1200,23 @@ async def callback_query_handler(callback_query: types.CallbackQuery,state: FSMC
         await state.clear()
 @form_router.callback_query(Form.pay_amount) #Колбеки оплаты
 async def callback_query_handler(callback_query: types.CallbackQuery,state: FSMContext) -> any:
-    index = get_indexes(list(callback_query.data),'|')
-    if check_pay(callback_query.data[index[0]+1:index[1]],callback_query.data[0:index[0]]):
-        userdata['Balance'][userdata['UserID'].index(int(callback_query.data[index[0]+1:index[1]]))] += int(callback_query.data[index[1]+1::])
-        ref = str(userdata['UseRefCode'][userdata['UserID'].index(int(callback_query.data[index[0] + 1:index[1]]))])
-        if ref != 'nan':
-            userdata['Balance'][userdata['refCode'].index(ref)]+= int(callback_query.data[index[1]+1::])*0.3
-        pd.DataFrame(userdata).to_excel('DataBase/Sheets/UserData.xlsx', sheet_name='Users')
-        await bot.delete_message(callback_query.message.chat.id,callback_query.message.message_id)
-        await callback_query.answer('Оплата прошла деньги зачислены на баланс')
-    else:
-        await callback_query.answer('Ошибка')
+    try:
+        index = get_indexes(list(callback_query.data),'|')
+        if check_pay(callback_query.data[0:index[0]]):
+            userdata['Balance'][userdata['UserID'].index(int(callback_query.data[index[0]+1:index[1]]))] += int(callback_query.data[index[1]+1::])
+            ref = str(userdata['UseRefCode'][userdata['UserID'].index(int(callback_query.data[index[0] + 1:index[1]]))])
+            if ref != 'nan':
+                userdata['Balance'][userdata['refCode'].index(ref)]+= int(callback_query.data[index[1]+1::])*0.03
+            pd.DataFrame(userdata).to_excel('DataBase/Sheets/UserData.xlsx', sheet_name='Users')
+            await bot.delete_message(callback_query.message.chat.id,callback_query.message.message_id)
+            await callback_query.answer('Оплата прошла деньги зачислены на баланс')
+        else:
+            await callback_query.answer('Ошибка')
+    except:
+        if callback_query.data == 'Отмена':
+            await state.clear()
+            await callback_query.answer('Действие отменено')
+            await bot.delete_message(callback_query.message.chat.id, callback_query.message.message_id)
 @form_router.callback_query() #все колбеки
 async def callback_query_handler(callback_query: types.CallbackQuery,state: FSMContext) -> any:
     if callback_query.data[0:3] == 'del' and callback_query.data[0:6] != 'deladm':
