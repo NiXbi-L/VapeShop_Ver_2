@@ -1,10 +1,8 @@
 import asyncio
 import logging
 import sys
-from os import getenv
-from typing import Any, Dict
 
-from aiogram import Bot, Dispatcher, F, Router, html,types
+from aiogram import Bot, Dispatcher, Router, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -14,7 +12,7 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.methods.send_media_group import SendMediaGroup
-import aiogram
+
 
 import pandas as pd
 
@@ -30,8 +28,7 @@ bot = Bot(token=cfg.telegramAPI_TOKEN, parse_mode="HTML")
 
 ##########################################################################
 #Считываем данные с Excel файле в словарь df
-df = pd.read_excel('DataBase/Sheets/DataFrame.xlsx',usecols=[1,2,3]).to_dict('list')
-userdata = pd.read_excel('DataBase/Sheets/UserData.xlsx',usecols=[1,2,3,4,5,6,7,8,9,10]).to_dict('list')
+userdata = pd.read_excel('DataBase/Sheets/UserData.xlsx',usecols=[1,2,3,4,5,6,7,8,9,10,11,12]).to_dict('list')
 Citis = pd.read_excel('DataBase/Sheets/Сitis.xlsx',usecols=[1,2]).to_dict('list')
 prod = pd.read_excel('DataBase/Sheets/Products.xlsx',usecols=[1,2,3,4,5,6,7,8,9,10,11,12]).to_dict('list')
 VapeDataBase = pd.read_excel('DataBase/Sheets/VapeDataBase.xlsx').to_dict('list')
@@ -82,7 +79,7 @@ class Form(StatesGroup):
     #Оплата
     ##########################################################################
     pay_amount = State()
-    pay_ok = State()
+    vip_ok = State()
     ##########################################################################
     #Продвижениие
     vote_up = State()
@@ -113,7 +110,7 @@ def search_your_products(userid):
 #Функции сохраняют товар в базу данных
 ##########################################################################
 def get_mediaGroup(userID,gl):
-    if len(gl)>6:
+    if len(gl)>6 and datetime.now() > userdata['vip'][userdata['UserID'].index(int(userID))]:
         prod['ProdID'].append(sorted(prod['ProdID'])[len(prod['ProdID'])-1]+1)
         prod['Company'].append(gl[1])
         prod['CompanyName'].append(gl[2])
@@ -135,24 +132,57 @@ def get_mediaGroup(userID,gl):
         print(prod)
         pd.DataFrame(prod).to_excel('DataBase/Sheets/Products.xlsx')
         return True
+    elif len(gl)>6 and datetime.now() < userdata['vip'][userdata['UserID'].index(int(userID))]:
+        prod['ProdID'].insert(1,sorted(prod['ProdID'])[len(prod['ProdID']) - 1] + 1)
+        prod['Company'].insert(1,gl[1])
+        prod['CompanyName'].insert(gl[2])
+        prod['ProductsName'].insert(1,gl[3])
+        prod['ProductsDescription'].insert(1,gl[4])
+        prod['Amount'].insert(1,gl[5])
+        prod['ProdType'].insert(1,gl[0])
+        prod['UserID'].insert(1,int(userID))
+        prod['ModerStatus'].insert(1,'moderating')
+        prod['UserName2'].insert(1,userdata['UserName2'][userdata['UserID'].index(int(userID))])
+        st = '|'
+        for i in range(6, len(gl)):
+            st += gl[i] + '|'
+        prod['PhotoID'].insert(1,st)
+        prod['City'].insert(1,userdata['City'][userdata['UserID'].index(int(userID))])
+        pd.DataFrame(prod).to_excel('DataBase/Sheets/Products.xlsx')
+        return True
     else:
         return False
 def non_mdeiaGroup(userID,gl):
-    prod['ProdID'].append(sorted(prod['ProdID'])[len(prod['ProdID']) - 1] + 1)
-    prod['Company'].append(gl[1])
-    prod['CompanyName'].append(gl[2])
-    prod['ProductsName'].append(gl[3])
-    prod['ProductsDescription'].append(gl[4])
-    prod['Amount'].append(gl[5])
-    prod['ProdType'].append(gl[0])
-    prod['UserID'].append(int(userID))
-    prod['ModerStatus'].append('moderating')
-    prod['PhotoID'].append('non')
-    prod['City'].append(userdata['City'][userdata['UserID'].index(int(userID))])
-    prod['UserName2'].append(userdata['UserName2'][userdata['UserID'].index(int(userID))])
-    pd.DataFrame(prod).to_excel('DataBase/Sheets/Products.xlsx')
+    if datetime.now() > userdata['vip'][userdata['UserID'].index(int(userID))]:
+        prod['ProdID'].append(sorted(prod['ProdID'])[len(prod['ProdID']) - 1] + 1)
+        prod['Company'].append(gl[1])
+        prod['CompanyName'].append(gl[2])
+        prod['ProductsName'].append(gl[3])
+        prod['ProductsDescription'].append(gl[4])
+        prod['Amount'].append(gl[5])
+        prod['ProdType'].append(gl[0])
+        prod['UserID'].append(int(userID))
+        prod['ModerStatus'].append('moderating')
+        prod['PhotoID'].append('non')
+        prod['City'].append(userdata['City'][userdata['UserID'].index(int(userID))])
+        prod['UserName2'].append(userdata['UserName2'][userdata['UserID'].index(int(userID))])
+        pd.DataFrame(prod).to_excel('DataBase/Sheets/Products.xlsx')
+    elif datetime.now() < userdata['vip'][userdata['UserID'].index(int(userID))]:
+        prod['ProdID'].insert(1,sorted(prod['ProdID'])[len(prod['ProdID']) - 1] + 1)
+        prod['Company'].insert(1,gl[1])
+        prod['CompanyName'].insert(gl[2])
+        prod['ProductsName'].insert(1,gl[3])
+        prod['ProductsDescription'].insert(1,gl[4])
+        prod['Amount'].insert(1,gl[5])
+        prod['ProdType'].insert(1,gl[0])
+        prod['UserID'].insert(1,int(userID))
+        prod['ModerStatus'].insert(1,'moderating')
+        prod['UserName2'].insert(1,userdata['UserName2'][userdata['UserID'].index(int(userID))])
+        prod['PhotoID'].insert(1,'non')
+        prod['City'].insert(1,userdata['City'][userdata['UserID'].index(int(userID))])
+        pd.DataFrame(prod).to_excel('DataBase/Sheets/Products.xlsx')
 def getMdediaGroup(userID,gl):
-    if len(gl) > 4:
+    if len(gl) > 4 and datetime.now() > userdata['vip'][userdata['UserID'].index(int(userID))]:
         prod['ProdID'].append(sorted(prod['ProdID'])[len(prod['ProdID']) - 1] + 1)
         prod['Company'].append('non')
         prod['CompanyName'].append('non')
@@ -174,22 +204,55 @@ def getMdediaGroup(userID,gl):
         print(prod)
         pd.DataFrame(prod).to_excel('DataBase/Sheets/Products.xlsx')
         return True
+    elif len(gl) > 4 and datetime.now() < userdata['vip'][userdata['UserID'].index(int(userID))]:
+        prod['ProdID'].insert(1,sorted(prod['ProdID'])[len(prod['ProdID']) - 1] + 1)
+        prod['Company'].insert(1,'non')
+        prod['CompanyName'].insert(1,'non')
+        prod['ProductsName'].insert(1,gl[1])
+        prod['ProductsDescription'].insert(1,gl[2])
+        prod['Amount'].insert(1,gl[3])
+        prod['ProdType'].insert(1,gl[0])
+        prod['UserID'].insert(1,int(userID))
+        prod['ModerStatus'].insert(1,'moderating')
+        prod['UserName2'].insert(1,userdata['UserName2'][userdata['UserID'].index(int(userID))])
+        st = '|'
+        for i in range(4, len(gl)):
+            st += gl[i] + '|'
+        prod['PhotoID'].insert(1,st)
+        prod['City'].insert(1,userdata['City'][userdata['UserID'].index(int(userID))])
+        pd.DataFrame(prod).to_excel('DataBase/Sheets/Products.xlsx')
+        return True
     else:
         return False
 def nonMdeiaGroup(userID, gl):
-    prod['ProdID'].append(sorted(prod['ProdID'])[len(prod['ProdID']) - 1] + 1)
-    prod['Company'].append('non')
-    prod['CompanyName'].append('non')
-    prod['ProductsName'].append(gl[1])
-    prod['ProductsDescription'].append(gl[2])
-    prod['Amount'].append(gl[3])
-    prod['ProdType'].append(gl[0])
-    prod['UserID'].append(int(userID))
-    prod['ModerStatus'].append('moderating')
-    prod['PhotoID'].append('non')
-    prod['City'].append(userdata['City'][userdata['UserID'].index(int(userID))])
-    prod['UserName2'].append(userdata['UserName2'][userdata['UserID'].index(int(userID))])
-    pd.DataFrame(prod).to_excel('DataBase/Sheets/Products.xlsx')
+    if datetime.now() > userdata['vip'][userdata['UserID'].index(int(userID))]:
+        prod['ProdID'].append(sorted(prod['ProdID'])[len(prod['ProdID']) - 1] + 1)
+        prod['Company'].append('non')
+        prod['CompanyName'].append('non')
+        prod['ProductsName'].append(gl[1])
+        prod['ProductsDescription'].append(gl[2])
+        prod['Amount'].append(gl[3])
+        prod['ProdType'].append(gl[0])
+        prod['UserID'].append(int(userID))
+        prod['ModerStatus'].append('moderating')
+        prod['PhotoID'].append('non')
+        prod['City'].append(userdata['City'][userdata['UserID'].index(int(userID))])
+        prod['UserName2'].append(userdata['UserName2'][userdata['UserID'].index(int(userID))])
+        pd.DataFrame(prod).to_excel('DataBase/Sheets/Products.xlsx')
+    elif datetime.now() < userdata['vip'][userdata['UserID'].index(int(userID))]:
+        prod['ProdID'].insert(1,sorted(prod['ProdID'])[len(prod['ProdID']) - 1] + 1)
+        prod['Company'].insert(1,'non')
+        prod['CompanyName'].insert(1,'non')
+        prod['ProductsName'].insert(1,gl[1])
+        prod['ProductsDescription'].insert(1,gl[2])
+        prod['Amount'].insert(1,gl[3])
+        prod['ProdType'].insert(1,gl[0])
+        prod['UserID'].insert(1,int(userID))
+        prod['ModerStatus'].insert(1,'moderating')
+        prod['PhotoID'].insert(1,'non')
+        prod['City'].insert(1,userdata['City'][userdata['UserID'].index(int(userID))])
+        prod['UserName2'].insert(1,userdata['UserName2'][userdata['UserID'].index(int(userID))])
+        pd.DataFrame(prod).to_excel('DataBase/Sheets/Products.xlsx')
 ##########################################################################
 
 #Функции платежей
@@ -234,7 +297,7 @@ async def command_start(message: types.message, state: FSMContext) -> None:
             text="Инструкция для чайников",
             url = 'https://docs.google.com/document/d/1PrAq1gIH5_WP0INRtGYMnAGIXXrJSGEhccZZm10GuJw/edit?usp=sharing'
         ))
-        if message.from_user.id in userdata['UserID']: #Если пользователь уже есть в базе данных
+        if message.from_user.id in userdata['UserID'] and str(userdata['Status'][userdata['UserID'].index(message.from_user.id)]) == 'Enabled': #Если пользователь уже есть в базе данных
             await message.answer('Вот список доступных команд:\n' #выводим список команд
                                  '/profile - Посмотреть свой профиль\n'
                                  '/add - Выстовить товар на продажу\n'
@@ -246,6 +309,22 @@ async def command_start(message: types.message, state: FSMContext) -> None:
                                  '/addref - Создать свой реферальный код \n'
                                  'Бот сейчас находится находится в стадии бета-теста. Возможны некоторые баги и не доработки.'
                                  'Если вы встретите такие, то прозьба отправить репорт с помощью команды /report.',reply_markup=builder.as_markup())
+        elif message.from_user.id in userdata['UserID'] and str(userdata['Status'][userdata['UserID'].index(message.from_user.id)]) == 'Disabled':
+            userdata['Status'][userdata['UserID'].index(message.from_user.id)] = 'Enabled'
+            pd.DataFrame(userdata).to_excel('DataBase/Sheets/UserData.xlsx', sheet_name='Users')
+            await message.answer('Аккаунт восстановлен\n'
+                                 'Вот список доступных команд:\n' 
+                                 '/profile - Посмотреть свой профиль\n'
+                                 '/add - Выстовить товар на продажу\n'
+                                 '/search - Поиск товаров\n'
+                                 '/delprofile - Удалить профиль\n'
+                                 '/pay - Задонатить на баланс бота\n'
+                                 '/report - Обращение к создателям бота\n'
+                                 '/ref - Ввести реферальный код \n'
+                                 '/addref - Создать свой реферальный код \n'
+                                 'Бот сейчас находится находится в стадии бета-теста. Возможны некоторые баги и не доработки.'
+                                 'Если вы встретите такие, то прозьба отправить репорт с помощью команды /report.',
+                                 reply_markup=types.ReplyKeyboardRemove())
         else:
             await message.answer('Для начала работы мне потребуются некоторые твои данные.', #Запрашиваем данные у пользователя
                 reply_markup=types.ReplyKeyboardRemove())
@@ -272,6 +351,10 @@ async def City(message: Message, state: FSMContext) -> None:
             userdata['Рейтинг'].append(5.0)
             userdata['Balance'].append(0.0)
             userdata['UserName2'].append(message.from_user.username)
+            userdata['refCode'].append('nan')
+            userdata['UseRefCode'].append('nan')
+            userdata['Status'].append('Enabled')
+            userdata['vip'].append(datetime.now()-timedelta(days=31))
             await state.set_state(Form.Yes_or_No)
             pd.DataFrame(userdata).to_excel('DataBase/Sheets/UserData.xlsx',sheet_name='Users')
         else:
@@ -310,6 +393,10 @@ async def Yes_or_No(message: Message, state: FSMContext) -> None:
             userdata['кол-во продаых товаров'].pop(userdata['UserName'].index(message.from_user.first_name))
             userdata['Рейтинг'].pop(userdata['UserName'].index(message.from_user.first_name))
             userdata['UserName2'].pop(userdata['UserName'].index(message.from_user.first_name))
+            userdata['refCode'].pop(userdata['UserName'].index(message.from_user.first_name))
+            userdata['UseRefCode'].pop(userdata['UserName'].index(message.from_user.first_name))
+            userdata['Status'].pop(userdata['UserName'].index(message.from_user.first_name))
+            userdata['vip'].pop(userdata['UserName'].index(message.from_user.first_name))
             userdata['UserName'].remove(message.from_user.first_name)
             pd.DataFrame(userdata).to_excel('DataBase/Sheets/UserData.xlsx', sheet_name='Users')
             await message.answer('Хорошо. Введите новое название города.')
@@ -320,7 +407,7 @@ async def Yes_or_No(message: Message, state: FSMContext) -> None:
 ##########################################################################
 @form_router.message(Command("profile"))
 async def command_profile(message: Message) -> None:
-    if message.from_user.id in userdata['UserID']:
+    if message.from_user.id in userdata['UserID'] and str(userdata['Status'][userdata['UserID'].index(message.from_user.id)]) == 'Enabled':
         if message.chat.type == 'private':
             builder = InlineKeyboardBuilder()
             builder.add(types.InlineKeyboardButton(
@@ -343,7 +430,7 @@ async def command_profile(message: Message) -> None:
 ##########################################################################
 @form_router.message(Command("order")) #Вызов страници товара
 async def command_profile(message: Message,state: FSMContext) -> None:
-    if message.from_user.id in userdata['UserID']:
+    if message.from_user.id in userdata['UserID'] and str(userdata['Status'][userdata['UserID'].index(message.from_user.id)]) == 'Enabled':
         if message.chat.type == 'private':
             builder = InlineKeyboardBuilder()
             builder.add(types.InlineKeyboardButton(
@@ -401,7 +488,7 @@ async def vote_my_product(message: Message, state: FSMContext) -> None:
 ##########################################################################
 @form_router.message(Command("add"))
 async def command_profile(message: Message,state: FSMContext) -> None:
-    if message.from_user.id in userdata['UserID']:
+    if message.from_user.id in userdata['UserID'] and str(userdata['Status'][userdata['UserID'].index(message.from_user.id)]) == 'Enabled':
         if message.chat.type == 'private':
             await state.set_state(Form.add_productType)
             await message.answer('Выберите категорию',reply_markup=types.ReplyKeyboardMarkup(keyboard=[[ #Вызов клавиатуры категорий
@@ -570,7 +657,7 @@ async def add_photos(message: Message,state: FSMContext) -> None:
 ##########################################################################
 @form_router.message(Command("search"))
 async def command_search(message: Message,state: FSMContext) -> None:
-    if message.from_user.id in userdata['UserID']:
+    if message.from_user.id in userdata['UserID'] and str(userdata['Status'][userdata['UserID'].index(message.from_user.id)]) == 'Enabled':
         if message.chat.type == 'private':
             await state.set_state(Form.vote_search)
             await message.answer('Выберите способ поиска',reply_markup=types.ReplyKeyboardMarkup(keyboard=[[ #Вызов клавиатуры категорий
@@ -614,7 +701,10 @@ async def vote_prodType(message: Message,state: FSMContext) -> None:
                                  KeyboardButton(text="Показать все"),
                              ]], resize_keyboard=True))
     elif message.text == 'Жидкости' or message.text == 'Мехмоды':
-        search_indexes[str(message.from_user.id)] = [i for i in range(len(prod['ProductsName'])) if prod['ProdType'][i] == message.text and prod['ModerStatus'][i] == 'Moderated' and prod['City'][i] == userdata['City'][userdata['UserID'].index(int(message.from_user.id))]]
+        search_indexes[str(message.from_user.id)] = [i for i in range(len(prod['ProductsName']))
+                                                     if prod['ProdType'][i] == message.text and prod['ModerStatus'][i] == 'Moderated'
+                                                     and prod['City'][i] == userdata['City'][userdata['UserID'].index(int(message.from_user.id))]
+                                                     and userdata['Status'][userdata['UserID'].index(int(prod['UserID'][i]))] == 'Enabled']
         if search_indexes[str(message.from_user.id)] == []:
             await state.clear()
             await message.answer('По вашему запросу ничего не найдено',reply_markup=types.ReplyKeyboardRemove())
@@ -638,10 +728,11 @@ async def notboxmod(message: Message,state: FSMContext) -> None:
             'Выберите компанию производитель:\n' + st,
             reply_markup=builder.as_markup())
     elif message.text == 'Показать все':
-        search_indexes[str(message.from_user.id)] = [i for i in range(len(prod['ProductsName'])) if
-                                                     prod['ProdType'][i] == 'Боксмоды/Подмоды' and prod['ModerStatus'][
-                                                         i] == 'Moderated' and prod['City'][i] == userdata['City'][
-                                                         userdata['UserID'].index(int(message.from_user.id))]]
+        search_indexes[str(message.from_user.id)] = [i for i in range(len(prod['ProductsName']))
+                                                     if prod['ProdType'][i] == 'Боксмоды/Подмоды'
+                                                     and prod['ModerStatus'][i] == 'Moderated'
+                                                     and prod['City'][i] == userdata['City'][userdata['UserID'].index(int(message.from_user.id))]
+                                                     and userdata['Status'][userdata['UserID'].index(int(prod['UserID'][i]))] == 'Enabled']
         if search_indexes[str(message.from_user.id)] == []:
             await state.clear()
             await message.answer('По вашему запросу ничего не найдено', reply_markup=types.ReplyKeyboardRemove())
@@ -687,7 +778,12 @@ async def companyName(message: Message,state: FSMContext) -> None:
             message.text) < x + 1 and int(message.text) > 0:  # Если выбрано верное значение то заносим название в базу и переходим к заполнению названия
         await state.set_state(Form.add_name)
         search[str(message.from_user.id)].append(VapeDataBase[search[str(message.from_user.id)][0]][int(message.text) - 1])
-        search_indexes[str(message.from_user.id)] = [i for i in range(len(prod['ProductsName'])) if search[str(message.from_user.id)][0] == prod['Company'][i] and search[str(message.from_user.id)][1] == prod['CompanyName'][i] and prod['ModerStatus'][i] == 'Moderated' and prod['City'][i]==userdata['City'][userdata['UserID'].index(int(message.from_user.id))]]
+        search_indexes[str(message.from_user.id)] = [i for i in range(len(prod['ProductsName']))
+                                                     if search[str(message.from_user.id)][0] == prod['Company'][i]
+                                                     and search[str(message.from_user.id)][1] == prod['CompanyName'][i]
+                                                     and prod['ModerStatus'][i] == 'Moderated'
+                                                     and prod['City'][i]==userdata['City'][userdata['UserID'].index(int(message.from_user.id))]
+                                                     and userdata['Status'][userdata['UserID'].index(int(prod['UserID'][i]))] == 'Enabled']
         if search_indexes[str(message.from_user.id)] == []:
             await state.clear()
             await message.answer('По вашему запросу ничего не найдено')
@@ -698,7 +794,11 @@ async def companyName(message: Message,state: FSMContext) -> None:
         await message.answer('Введено неверное значение. Попробуйте еще раз.')
 @form_router.message(Form.search_of_KeyWords)
 async def search_of_KeyWords(message: Message,state: FSMContext) -> None:
-    search_indexes[str(message.from_user.id)] = [i for i in range(len(prod['ProductsName'])) if message.text in prod['ProductsName'][i] and prod['ModerStatus'][i] == 'Moderated' and prod['City'][i]==userdata['City'][userdata['UserID'].index(int(message.from_user.id))]]
+    search_indexes[str(message.from_user.id)] = [i for i in range(len(prod['ProductsName']))
+                                                 if message.text in prod['ProductsName'][i]
+                                                 and prod['ModerStatus'][i] == 'Moderated'
+                                                 and prod['City'][i]==userdata['City'][userdata['UserID'].index(int(message.from_user.id))]
+                                                 and userdata['Status'][userdata['UserID'].index(int(prod['UserID'][i]))] == 'Enabled']
     if search_indexes[str(message.from_user.id)] == []:
         builder = InlineKeyboardBuilder()
         builder.add(types.InlineKeyboardButton(
@@ -889,10 +989,12 @@ async def command_pay(message: Message,state: FSMContext) -> None:
         text="Отмена",
         callback_data="Отмена")
     )
-    if message.from_user.id in userdata['UserID']:
+    if message.from_user.id in userdata['UserID'] and str(userdata['Status'][userdata['UserID'].index(message.from_user.id)]) == 'Enabled':
         if message.chat.type == 'private':
             await state.set_state(Form.pay_amount)
             await message.answer('Введите сумму для пополнения',reply_markup=builder.as_markup())
+    else:
+        await message.answer('Напишите /start')
 @form_router.message(Form.pay_amount)
 async def pay_amount(message: Message,state: FSMContext) -> None:
     if int(message.text) > 1:
@@ -910,11 +1012,54 @@ async def pay_amount(message: Message,state: FSMContext) -> None:
         await message.answer('Введено неверное значение. Попробуйте еще раз',reply_markup=types.ReplyKeyboardRemove())
 ##########################################################################
 
+#покупка vip
+##########################################################################
+@form_router.message(Command("vip"))
+async def command_pay(message: Message,state: FSMContext) -> None:
+    if userdata['vip'][userdata['UserID'].index(int(message.from_user.id))] < datetime.now():
+        await message.answer('Стоимость vip-статуса - 250р\n'
+                             'Возможности vip-статуса:\n'
+                             '- 200р на баланс\n'
+                             '- все объявления добавляются в начало списка, а не в конец\n'
+                             '- 10% от суммы поплнения рефералов поступают вам на баланс(Стандартно 3%)\n'
+                             'Хотите ли вы преобрести vip-статус?',reply_markup=types.ReplyKeyboardMarkup(keyboard=[[
+                                        KeyboardButton(text="Да"),
+                                        KeyboardButton(text="Нет"),
+                                    ]],resize_keyboard=True))
+    else:
+        await message.answer('Стоимость vip-статуса - 250р\n'
+                             'Возможности vip-статуса:\n'
+                             '- 200р на баланс\n'
+                             '- все объявления добавляются в начало списка, а не в конец\n'
+                             '- 10% от суммы поплнения рефералов поступают вам на баланс(Стандартно 3%)\n'
+                             'Хотите ли вы продлить vip-статус?', reply_markup=types.ReplyKeyboardMarkup(keyboard=[[
+            KeyboardButton(text="Да"),
+            KeyboardButton(text="Нет"),
+        ]], resize_keyboard=True))
+    await state.set_state(Form.vip_ok)
+@form_router.message(Form.vip_ok)
+async def pay_amount(message: Message,state: FSMContext) -> None:
+    if message.text == 'Да':
+        pay = create_pay_url(250)
+        builder = InlineKeyboardBuilder()
+        builder.add(types.InlineKeyboardButton(
+            text="Оплатить",
+            url=str(pay[1])),
+        )
+        builder.row(types.InlineKeyboardButton(
+            text="Проверить оплату",
+            callback_data=str(pay[0]) + '|' + str(message.from_user.id)))
+        await message.answer('*',reply_markup=types.ReplyKeyboardRemove())
+        await message.answer('Заявка на оплату создана', reply_markup=builder.as_markup())
+    elif message.text == 'Нет':
+        await message.answer('Хорошо', reply_markup=types.ReplyKeyboardRemove())
+        await state.clear()
+##########################################################################
+
 #Продвижение
 ##########################################################################
 @form_router.message(Form.vote_up)
 async def vote_up(message: Message,state: FSMContext) -> None:
-    print(datetime.now()+timedelta(minutes=2))
     try:
         print(up_log[str(message.from_user.id)])
     except:
@@ -939,7 +1084,7 @@ async def vote_up(message: Message,state: FSMContext) -> None:
                 index = up_index[str(message.from_user.id)]
                 x = 0
                 for i in range(len(userdata['UserID'])):
-                    if userdata['City'][i] == userdata['City'][userdata['UserID'].index(int(message.from_user.id))]:
+                    if userdata['City'][i] == userdata['City'][userdata['UserID'].index(int(message.from_user.id))] and userdata['Status'][i] == 'Enabled':
                         if prod['PhotoID'][index] != 'non':
                             groupID = userdata['UserID'][i]
                             media = []
@@ -975,7 +1120,7 @@ async def vote_up(message: Message,state: FSMContext) -> None:
                 await message.answer('На вашем счете не достаточно средств.\nВы можете пополнить баланс с помощью комады /pay.')
                 await state.clear()
         else:
-            await message.answer('Вам нельзя использовать этот тип продвижения.\nЕще: ' + str(up_log[str(message.from_user.id)]+timedelta(hours=12)-datetime.now())[0:8])
+            await message.answer('Вам нельзя использовать этот тип продвижения.\nЕще: ' + str(up_log[str(message.from_user.id)]+timedelta(hours=12) - datetime.now())[0:8])
     elif message.text == '2':
         if userdata['Balance'][userdata['UserID'].index(int(message.from_user.id))] - 20 >= 0:
             userdata['Balance'][userdata['UserID'].index(int(message.from_user.id))] -= 20
@@ -1038,13 +1183,15 @@ async def bug_report(message: Message,state: FSMContext) -> None:
 ##########################################################################
 @form_router.message(Command("addref"))
 async def command_ref(message: Message,state: FSMContext) -> None:
-    if message.from_user.id in userdata['UserID']:
+    if message.from_user.id in userdata['UserID'] and str(userdata['Status'][userdata['UserID'].index(message.from_user.id)]) == 'Enabled':
         if message.chat.type == 'private':
             if  str(userdata['refCode'][userdata['UserID'].index(message.from_user.id)]) == 'nan':
                 await message.answer('Введите реферальный код')
                 await state.set_state(Form.add_ref)
             else:
                 await message.answer('У вас уже есть реферальный код "'+str(userdata['refCode'][userdata['UserID'].index(message.from_user.id)])+'"')
+    else:
+        await message.answer('Напишите /start')
 @form_router.message(Form.add_ref)
 async def add_ref(message: Message, state: FSMContext) -> None:
     if not(message.text in userdata['refCode']):
@@ -1056,13 +1203,15 @@ async def add_ref(message: Message, state: FSMContext) -> None:
         await message.answer('Такой реферальный код уже существует. Введите другой')
 @form_router.message(Command("ref"))
 async def command_ref(message: Message,state: FSMContext) -> None:
-    if message.from_user.id in userdata['UserID']:
+    if message.from_user.id in userdata['UserID'] and str(userdata['Status'][userdata['UserID'].index(message.from_user.id)]) == 'Enabled':
         if message.chat.type == 'private':
             if str(userdata['UseRefCode'][userdata['UserID'].index(int(message.from_user.id))]) == 'nan':
                 await message.answer('Введите реферальный код')
                 await state.set_state(Form.ref)
             else:
                 await message.answer('Вы уже вводили реферальный код')
+    else:
+        await message.answer('Напишите /start')
 @form_router.message(Form.ref)
 async def add_ref(message: Message, state: FSMContext) -> None:
     if message.text in userdata['refCode']:
@@ -1085,29 +1234,22 @@ async def add_ref(message: Message, state: FSMContext) -> None:
 ##########################################################################
 @form_router.message(Command("delprofile"))
 async def command_pay(message: Message,state: FSMContext) -> None:
-    if message.from_user.id in userdata['UserID']:
+    if message.from_user.id in userdata['UserID'] and str(userdata['Status'][userdata['UserID'].index(message.from_user.id)]) == 'Enabled':
         if message.chat.type == 'private':
-            await message.answer('Это действие не возможно отменить и все данные о вас удалятся в том числе и баланс.\nВы точно хотиет удалить профиль?',
+            await message.answer('После деактивировации вы не сможете пользоваться ботом и вам не будут приходить уведомеления от него,но вы всегда можете его восстановить.\nВы точно хотиет деактивировать профиль?',
                                  reply_markup=types.ReplyKeyboardMarkup(keyboard=[[
                                     KeyboardButton(text="Да"),
                                     KeyboardButton(text="Нет"),
                                 ]],resize_keyboard=True))
             await state.set_state(Form.del_frofile)
+    else:
+        await message.answer('Напишите /start')
 @form_router.message(Form.del_frofile)
 async def bug_report(message: Message, state: FSMContext) -> None:
     if message.text == 'Да':
-        userdata['City'].pop(userdata['UserName'].index(message.from_user.first_name))
-        userdata['Balance'].pop(userdata['UserName'].index(message.from_user.first_name))
-        userdata['UserID'].pop(userdata['UserName'].index(message.from_user.first_name))
-        userdata['Рефералы'].pop(userdata['UserName'].index(message.from_user.first_name))
-        userdata['кол-во продаых товаров'].pop(userdata['UserName'].index(message.from_user.first_name))
-        userdata['Рейтинг'].pop(userdata['UserName'].index(message.from_user.first_name))
-        userdata['UserName2'].pop(userdata['UserName'].index(message.from_user.first_name))
-        userdata['refCode'].pop(userdata['UserName'].index(message.from_user.first_name))
-        userdata['UseRefCode'].pop(userdata['UserName'].index(message.from_user.first_name))
-        userdata['UserName'].remove(message.from_user.first_name)
+        userdata['Status'][userdata['UserID'].index(message.from_user.id)] = 'Disabled'
         pd.DataFrame(userdata).to_excel('DataBase/Sheets/UserData.xlsx', sheet_name='Users')
-        await message.answer('Профиль удаен. Возвращайтесь к нам еще.',reply_markup=types.ReplyKeyboardRemove())
+        await message.answer('Профиль деактивирован. Возвращайтесь к нам еще.',reply_markup=types.ReplyKeyboardRemove())
         await state.clear()
     elif message.text == 'Нет':
         await message.answer('Списибо что остались с нами)', reply_markup=types.ReplyKeyboardRemove())
@@ -1132,7 +1274,10 @@ async def callback_query_handler(callback_query: types.CallbackQuery,state: FSMC
             #отправка товара на модерацию
             groupID = -1001667843376
             index = get_indexes(prod['UserID'], int(callback_query.data))
-            index = sorted(index)[len(index)-1]
+            if userdata['vip'][userdata['UserID'].index(int(callback_query.data))] < datetime.now():
+                index = sorted(index)[len(index)-1]
+            else:
+                index = sorted(index)[0]
             prodID = prod['ProdID'][index]
             builder = InlineKeyboardBuilder()
             builder.add(types.InlineKeyboardButton(
@@ -1179,7 +1324,10 @@ async def callback_query_handler(callback_query: types.CallbackQuery,state: FSMC
         # отправка товара на модерацию
         groupID = -1001667843376
         index = get_indexes(prod['UserID'], int(callback_query.data[3::]))
-        index = sorted(index)[len(index)-1]
+        if userdata['vip'][userdata['UserID'].index(int(callback_query.data[3::]))] < datetime.now():
+            index = sorted(index)[len(index) - 1]
+        else:
+            index = sorted(index)[0]
         prodID = prod['ProdID'][index]
         builder = InlineKeyboardBuilder()
         builder.add(types.InlineKeyboardButton(
@@ -1205,11 +1353,39 @@ async def callback_query_handler(callback_query: types.CallbackQuery,state: FSMC
         if check_pay(callback_query.data[0:index[0]]):
             userdata['Balance'][userdata['UserID'].index(int(callback_query.data[index[0]+1:index[1]]))] += int(callback_query.data[index[1]+1::])
             ref = str(userdata['UseRefCode'][userdata['UserID'].index(int(callback_query.data[index[0] + 1:index[1]]))])
-            if ref != 'nan':
+            if ref != 'nan' and userdata['Status'][userdata['refCode'].index(ref)] == 'Enabled' and datetime.now()<userdata['vip'][userdata['refCode'].index(ref)]:
+                userdata['Balance'][userdata['refCode'].index(ref)] += int(callback_query.data[index[1] + 1::]) * 0.1
+            elif ref != 'nan' and userdata['Status'][userdata['refCode'].index(ref)] == 'Enabled':
                 userdata['Balance'][userdata['refCode'].index(ref)]+= int(callback_query.data[index[1]+1::])*0.03
             pd.DataFrame(userdata).to_excel('DataBase/Sheets/UserData.xlsx', sheet_name='Users')
             await bot.delete_message(callback_query.message.chat.id,callback_query.message.message_id)
+            await state.clear()
             await callback_query.answer('Оплата прошла деньги зачислены на баланс')
+        else:
+            await callback_query.answer('Ошибка')
+    except:
+        if callback_query.data == 'Отмена':
+            await state.clear()
+            await callback_query.answer('Действие отменено')
+            await bot.delete_message(callback_query.message.chat.id, callback_query.message.message_id)
+@form_router.callback_query(Form.vip_ok) #Колбеки оплаты вип
+async def callback_query_handler(callback_query: types.CallbackQuery,state: FSMContext) -> any:
+    try:
+        index = get_indexes(list(callback_query.data),'|')
+        if check_pay(callback_query.data[0:index[0]]):
+            userdata['Balance'][userdata['UserID'].index(int(callback_query.data[index[0]+1::]))] += 200
+            if userdata['vip'][userdata['UserID'].index(int(callback_query.data[index[0] + 1::]))] < datetime.now():
+                userdata['vip'][userdata['UserID'].index(int(callback_query.data[index[0] + 1::]))] = datetime.now()+timedelta(days=30)
+            else:
+                userdata['vip'][userdata['UserID'].index(int(callback_query.data[index[0] + 1::]))]+=timedelta(days=30)
+            ref = str(userdata['UseRefCode'][userdata['UserID'].index(int(callback_query.data[index[0] + 1::]))])
+            if ref != 'nan' and userdata['Status'][userdata['refCode'].index(ref)] == 'Enabled' and datetime.now()<userdata['vip'][userdata['refCode'].index(ref)]:
+                userdata['Balance'][userdata['refCode'].index(ref)]+= 250*0.1
+            elif ref != 'nan' and userdata['Status'][userdata['refCode'].index(ref)] == 'Enabled':
+                userdata['Balance'][userdata['refCode'].index(ref)] += 250 * 0.03
+            pd.DataFrame(userdata).to_excel('DataBase/Sheets/UserData.xlsx', sheet_name='Users')
+            await bot.delete_message(callback_query.message.chat.id,callback_query.message.message_id)
+            await callback_query.answer('Оплата прошла vip-статус активирован')
         else:
             await callback_query.answer('Ошибка')
     except:
