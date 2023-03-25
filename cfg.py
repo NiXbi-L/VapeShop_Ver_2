@@ -1,3 +1,3 @@
-telegramAPI_TOKEN = '6118621435:AAFeEUhleTKzSLA8wEezV1duJVcPGXxCtMI'
-ShopID = '988930'
-PaymentAPI_key = 'test_8uqHtQ94DrghzUajQBeAPf-MTcBs7ICmDTfW-DCGFWU'
+telegramAPI_TOKEN = ''
+ShopID = ''
+PaymentAPI_key = ''
